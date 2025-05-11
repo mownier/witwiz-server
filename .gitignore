@@ -1,0 +1,32 @@
+# Binaries
+*.exe
+*.dll
+*.o
+*.out
+
+# Dependency management tools (Go Modules)
+/vendor/
+
+# Go build cache
+/build/
+/pkg/
+
+# Test cache
+*.test
+*.prof
+
+# IDE specific
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*~
+# Logs
+*.log
+
+witwiz.exe
+witwiz
