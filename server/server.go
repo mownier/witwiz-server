@@ -21,13 +21,14 @@ func NewServer() *Server {
 	return &Server{
 		updateSignal: make(chan struct{}),
 		gameState: &pb.GameStateUpdate{
-			Players:     make(map[int32]*pb.PlayerState),
-			Projectiles: make(map[int32]*pb.ProjectileState),
+			Players:     []*pb.PlayerState{},
+			Projectiles: []*pb.ProjectileState{},
 		},
 	}
 }
 
 func (s *Server) JoinGame(stream pb.WitWiz_JoinGameServer) error {
+	log.Println("join game")
 	select {
 	case <-stream.Context().Done():
 		return status.Error(codes.Canceled, "cancelled")
@@ -38,6 +39,7 @@ func (s *Server) JoinGame(stream pb.WitWiz_JoinGameServer) error {
 }
 
 func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
+	log.Println("join game internal")
 	s.gameStateMu.Lock()
 
 	if len(s.gameState.Players) >= 2 {
@@ -46,18 +48,32 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 	}
 
 	var playerId int32 = 0
+
 	for _, player := range s.gameState.Players {
-		playerId = max(playerId, player.PlayerId)
+		playerId = player.PlayerId
+	}
+
+	var playerIdToInsert int32 = 0
+	if playerId == 1 {
+		playerIdToInsert = 2
+	} else if playerId == 2 {
+		playerIdToInsert = 1
+	} else if playerId == 0 {
+		playerIdToInsert = 1
+	}
+	if playerIdToInsert == 0 {
+		s.gameStateMu.Unlock()
+		return status.Error(codes.OutOfRange, "error on player id to insert")
 	}
 
 	player := &pb.PlayerState{
-		PlayerId:          playerId + 1,
+		PlayerId:          playerIdToInsert,
 		PositionX:         0,
 		PositionY:         0,
 		BoundingBoxWidth:  32,
 		BoundingBoxHeight: 32,
 	}
-	s.gameState.Players[player.PlayerId] = player
+	s.gameState.Players = append(s.gameState.Players, player)
 
 	log.Printf("player %d joined the game\n", player.PlayerId)
 
@@ -66,7 +82,16 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 	defer func() {
 		s.gameStateMu.Lock()
 
-		delete(s.gameState.Players, player.PlayerId)
+		index := -1
+		for i, p := range s.gameState.Players {
+			if p.PlayerId == player.PlayerId {
+				index = i
+				break
+			}
+		}
+		if index >= 0 {
+			s.gameState.Players = DeleteElementOrdered(s.gameState.Players, index)
+		}
 
 		s.gameStateMu.Unlock()
 
@@ -80,6 +105,7 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 				return
 
 			case <-s.updateSignal:
+				log.Println("will send game state 2")
 				s.gameStateMu.Lock()
 				defer s.gameStateMu.Unlock()
 				if err := stream.Send(s.gameState); err != nil {
@@ -89,6 +115,7 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 		}
 	}()
 
+	log.Println("will send game state 1")
 	s.signalUpdate()
 
 	for {
@@ -119,8 +146,14 @@ func (s *Server) processInput(input *pb.PlayerInput) error {
 	s.gameStateMu.Lock()
 	defer s.gameStateMu.Unlock()
 
-	player, ok := s.gameState.Players[input.PlayerId]
-	if !ok {
+	var player *pb.PlayerState
+	for _, p := range s.gameState.Players {
+		if p.PlayerId == input.PlayerId {
+			player = p
+			break
+		}
+	}
+	if player == nil {
 		return status.Error(codes.NotFound, "player not found")
 	}
 
@@ -147,11 +180,12 @@ func (s *Server) processInput(input *pb.PlayerInput) error {
 }
 
 func (s *Server) signalUpdate() {
-	select {
-	case s.updateSignal <- struct{}{}:
-		// Will send
+	s.updateSignal <- struct{}{}
+}
 
-	default:
-		// Channel is full, or no receiver, don't block
+func DeleteElementOrdered[T any](slice []T, index int) []T {
+	if index >= 0 && index < len(slice) {
+		return append(slice[:index], slice[index+1:]...)
 	}
+	return slice
 }

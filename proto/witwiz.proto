@@ -21,8 +21,8 @@ message PlayerInput {
 }
 
 message GameStateUpdate {
-    map<int32, PlayerState> players = 1;
-    map<int32, ProjectileState> projectiles = 2;
+    repeated PlayerState players = 1;
+    repeated ProjectileState projectiles = 2;
 }
 
 message PlayerState {
@@ -30,7 +30,7 @@ message PlayerState {
     float position_x = 2;
     float position_y = 3;
     float bounding_box_width = 4;
-    int32 bounding_box_height = 5;
+    float bounding_box_height = 5;
 }
 
 message ProjectileState {
