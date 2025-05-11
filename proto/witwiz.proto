@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package witwiz;
+
+option go_package="witwiz/proto";
+
+service WitWiz {
+    rpc JoinGame(stream PlayerInput) returns (stream GameStateUpdate) {}
+}
+
+message PlayerInput {
+
+}
+
+message GameStateUpdate {
+
+}
