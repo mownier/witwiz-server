@@ -21,8 +21,8 @@ message PlayerInput {
 }
 
 message GameStateUpdate {
-    repeated PlayerState players = 1;
-    repeated ProjectileState projectiles = 2;
+    map<int32, PlayerState> players = 1;
+    map<int32, ProjectileState> projectiles = 2;
 }
 
 message PlayerState {
