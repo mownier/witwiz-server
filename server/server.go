@@ -11,15 +11,16 @@ import (
 )
 
 type Server struct {
-	updateSignal chan struct{}
-	gameState    *pb.GameStateUpdate
-	gameStateMu  sync.Mutex
+	updateSignals   map[int32]chan struct{}
+	gameState       *pb.GameStateUpdate
+	gameStateMu     sync.Mutex
+	updateSignalsMu sync.Mutex
 	pb.UnimplementedWitWizServer
 }
 
 func NewServer() *Server {
 	return &Server{
-		updateSignal: make(chan struct{}, 1),
+		updateSignals: make(map[int32]chan struct{}),
 		gameState: &pb.GameStateUpdate{
 			Players:     []*pb.PlayerState{},
 			Projectiles: []*pb.ProjectileState{},
@@ -86,6 +87,12 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 
 		s.gameStateMu.Unlock()
 
+		s.updateSignalsMu.Lock()
+
+		delete(s.updateSignals, player.PlayerId)
+
+		s.updateSignalsMu.Unlock()
+
 		log.Printf("player %d left the game\n", player.PlayerId)
 	}()
 
@@ -132,12 +139,22 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 		}
 	}
 
+	s.signalUpdate()
+
+	signal := make(chan struct{}, 1)
+
+	s.updateSignalsMu.Lock()
+
+	s.updateSignals[player.PlayerId] = signal
+
+	s.updateSignalsMu.Unlock()
+
 	for {
 		select {
 		case <-stream.Context().Done():
 			return status.Error(codes.Canceled, "cancelled")
 
-		case <-s.updateSignal:
+		case <-signal:
 			s.gameStateMu.Lock()
 			if err := stream.Send(s.gameState); err != nil {
 				s.gameStateMu.Unlock()
@@ -188,12 +205,16 @@ func (s *Server) processInput(input *pb.PlayerInput) error {
 }
 
 func (s *Server) signalUpdate() {
-	select {
-	case s.updateSignal <- struct{}{}:
-		// send
+	s.updateSignalsMu.Lock()
+	defer s.updateSignalsMu.Unlock()
+	for _, signal := range s.updateSignals {
+		select {
+		case signal <- struct{}{}:
+			// send
 
-	default:
-		// do not block
+		default:
+			// do not block
+		}
 	}
 }
 
