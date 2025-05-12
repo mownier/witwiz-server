@@ -19,7 +19,7 @@ type Server struct {
 
 func NewServer() *Server {
 	return &Server{
-		updateSignal: make(chan struct{}),
+		updateSignal: make(chan struct{}, 1),
 		gameState: &pb.GameStateUpdate{
 			Players:     []*pb.PlayerState{},
 			Projectiles: []*pb.ProjectileState{},
@@ -28,7 +28,6 @@ func NewServer() *Server {
 }
 
 func (s *Server) JoinGame(stream pb.WitWiz_JoinGameServer) error {
-	log.Println("join game")
 	select {
 	case <-stream.Context().Done():
 		return status.Error(codes.Canceled, "cancelled")
@@ -39,7 +38,6 @@ func (s *Server) JoinGame(stream pb.WitWiz_JoinGameServer) error {
 }
 
 func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
-	log.Println("join game internal")
 	s.gameStateMu.Lock()
 
 	if len(s.gameState.Players) >= 2 {
@@ -48,26 +46,19 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 	}
 
 	var playerId int32 = 0
-
-	for _, player := range s.gameState.Players {
-		playerId = player.PlayerId
-	}
-
-	var playerIdToInsert int32 = 0
-	if playerId == 1 {
-		playerIdToInsert = 2
-	} else if playerId == 2 {
-		playerIdToInsert = 1
-	} else if playerId == 0 {
-		playerIdToInsert = 1
-	}
-	if playerIdToInsert == 0 {
-		s.gameStateMu.Unlock()
-		return status.Error(codes.OutOfRange, "error on player id to insert")
+	if len(s.gameState.Players) == 0 {
+		playerId = 1
+	} else {
+		pId := s.gameState.Players[0].PlayerId
+		if pId == 1 {
+			playerId = 2
+		} else {
+			playerId = 1
+		}
 	}
 
 	player := &pb.PlayerState{
-		PlayerId:          playerIdToInsert,
+		PlayerId:          playerId,
 		PositionX:         0,
 		PositionY:         0,
 		BoundingBoxWidth:  32,
@@ -104,40 +95,57 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 			case <-stream.Context().Done():
 				return
 
-			case <-s.updateSignal:
-				log.Println("will send game state 2")
-				s.gameStateMu.Lock()
-				defer s.gameStateMu.Unlock()
-				if err := stream.Send(s.gameState); err != nil {
+			default:
+				input, err := stream.Recv()
+				if err != nil {
+					if err == io.EOF {
+						// Normal client disconnection
+						log.Printf("player %d disconnected\n", player.PlayerId)
+						return
+					}
+					msg := "failed to receive input"
+					log.Printf("%s: %v\n", msg, err)
 					return
 				}
+				if err := s.processInput(input); err != nil {
+					msg := "failed to process input"
+					log.Printf("%s: %v\n", msg, err)
+					return
+				}
+				log.Printf("input: %v\n", input)
 			}
 		}
 	}()
 
-	log.Println("will send game state 1")
-	s.signalUpdate()
+	initialUpdates := []*pb.GameStateUpdate{
+		{
+			YourPlayerId: player.PlayerId,
+		},
+		s.gameState,
+	}
+
+	for _, update := range initialUpdates {
+		if err := stream.Send(update); err != nil {
+			msg := "failed to send initial game state"
+			log.Printf("%s: %v\n", msg, err)
+			return status.Error(codes.Internal, msg)
+		}
+	}
 
 	for {
 		select {
 		case <-stream.Context().Done():
 			return status.Error(codes.Canceled, "cancelled")
 
-		default:
-			input, err := stream.Recv()
-			if err != nil {
-				if err == io.EOF {
-					// Normal client disconnection
-					log.Println("player disconnected")
-					return nil
-				}
-				msg := "failed to receive input"
+		case <-s.updateSignal:
+			s.gameStateMu.Lock()
+			if err := stream.Send(s.gameState); err != nil {
+				s.gameStateMu.Unlock()
+				msg := "failed to send game state"
 				log.Printf("%s: %v\n", msg, err)
 				return status.Error(codes.Internal, msg)
 			}
-			if err := s.processInput(input); err != nil {
-				return err
-			}
+			s.gameStateMu.Unlock()
 		}
 	}
 }
@@ -180,7 +188,13 @@ func (s *Server) processInput(input *pb.PlayerInput) error {
 }
 
 func (s *Server) signalUpdate() {
-	s.updateSignal <- struct{}{}
+	select {
+	case s.updateSignal <- struct{}{}:
+		// send
+
+	default:
+		// do not block
+	}
 }
 
 func DeleteElementOrdered[T any](slice []T, index int) []T {
