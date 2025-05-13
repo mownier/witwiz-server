@@ -27,6 +27,8 @@ func main() {
 		log.Println("stopped serving")
 	}()
 
+	go gameServer.Serve()
+
 	lis, err := net.Listen("tcp", ":40041")
 	if err != nil {
 		log.Fatalf("unable to listen at 40041: %v\n", err)

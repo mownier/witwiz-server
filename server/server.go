@@ -3,29 +3,27 @@ package server
 import (
 	"io"
 	"log"
-	"sync"
 	pb "witwiz/proto"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type Server struct {
-	updateSignals   map[int32]chan struct{}
-	gameState       *pb.GameStateUpdate
-	gameStateMu     sync.Mutex
-	updateSignalsMu sync.Mutex
+	gameWorld *gameWorld
 	pb.UnimplementedWitWizServer
 }
 
 func NewServer() *Server {
 	return &Server{
-		updateSignals: make(map[int32]chan struct{}),
-		gameState: &pb.GameStateUpdate{
-			Players:     []*pb.PlayerState{},
-			Projectiles: []*pb.ProjectileState{},
-		},
+		gameWorld: newGameWorld(),
 	}
+}
+
+func (s *Server) Serve() error {
+	go s.gameWorld.runGameLoop()
+	return nil
 }
 
 func (s *Server) JoinGame(stream pb.WitWiz_JoinGameServer) error {
@@ -39,59 +37,25 @@ func (s *Server) JoinGame(stream pb.WitWiz_JoinGameServer) error {
 }
 
 func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
-	s.gameStateMu.Lock()
-
-	if len(s.gameState.Players) >= 2 {
-		s.gameStateMu.Unlock()
-		return status.Error(codes.OutOfRange, "number of max players reached")
-	}
-
-	var playerId int32 = 0
-	if len(s.gameState.Players) == 0 {
-		playerId = 1
-	} else {
-		pId := s.gameState.Players[0].PlayerId
-		if pId == 1 {
-			playerId = 2
-		} else {
-			playerId = 1
-		}
+	playerId, err := s.generateUniquePlayerId()
+	if err != nil {
+		return err
 	}
 
 	player := &pb.PlayerState{
-		PlayerId:    playerId,
-		Position:    &pb.Vector2{X: 0, Y: 0},
-		BoundingBox: &pb.BoundingBox{Width: 32, Height: 32},
+		PlayerId:       playerId,
+		Position:       &pb.Vector2{X: 0, Y: 0},
+		Acceleration:   &pb.Vector2{X: 0, Y: 0},
+		Velocity:       &pb.Vector2{X: 0, Y: 0},
+		TargetVelocity: &pb.Vector2{X: 0, Y: 0},
+		BoundingBox:    &pb.BoundingBox{Width: 32, Height: 32},
+		MaxSpeed:       playerMaxSpeed,
 	}
-	s.gameState.Players = append(s.gameState.Players, player)
 
-	log.Printf("player %d joined the game\n", player.PlayerId)
-
-	s.gameStateMu.Unlock()
+	s.gameWorld.addPlayer(player, stream)
 
 	defer func() {
-		s.gameStateMu.Lock()
-
-		index := -1
-		for i, p := range s.gameState.Players {
-			if p.PlayerId == player.PlayerId {
-				index = i
-				break
-			}
-		}
-		if index >= 0 {
-			s.gameState.Players = DeleteElementOrdered(s.gameState.Players, index)
-		}
-
-		s.gameStateMu.Unlock()
-
-		s.updateSignalsMu.Lock()
-
-		delete(s.updateSignals, player.PlayerId)
-
-		s.updateSignalsMu.Unlock()
-
-		log.Printf("player %d left the game\n", player.PlayerId)
+		s.gameWorld.removePlayer(player.PlayerId)
 	}()
 
 	go func() {
@@ -108,112 +72,59 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 						log.Printf("player %d disconnected\n", player.PlayerId)
 						return
 					}
-					msg := "failed to receive input"
-					log.Printf("%s: %v\n", msg, err)
+					log.Printf("failed to receive input: %v\n", err)
 					return
 				}
-				if err := s.processInput(input); err != nil {
-					msg := "failed to process input"
-					log.Printf("%s: %v\n", msg, err)
+				if err := s.gameWorld.processInput(input); err != nil {
+					log.Printf("failed to process input: %v\n", err)
 					return
 				}
-				log.Printf("input: %v\n", input)
+				log.Printf("input from player %d: %v\n", player.PlayerId, input)
 			}
 		}
 	}()
 
-	initialUpdates := []*pb.GameStateUpdate{
-		{
-			YourPlayerId: player.PlayerId,
-		},
-		s.gameState,
+	initialUpdate := &pb.GameStateUpdate{YourPlayerId: player.PlayerId}
+	if err := stream.Send(initialUpdate); err != nil {
+		msg := "failed to send initial update"
+		log.Printf("%s: %v\n", msg, err)
+		return status.Error(codes.Internal, msg)
 	}
 
-	for _, update := range initialUpdates {
-		if err := stream.Send(update); err != nil {
-			msg := "failed to send initial game state"
-			log.Printf("%s: %v\n", msg, err)
-			return status.Error(codes.Internal, msg)
-		}
+	s.gameWorld.gameStateMu.Lock()
+	initialGameState := proto.Clone(s.gameWorld.gameState).(*pb.GameStateUpdate)
+	s.gameWorld.gameStateMu.Unlock()
+	if err := stream.Send(initialGameState); err != nil {
+		msg := "failed to send initial game state"
+		log.Printf("%s: %v\n", msg, err)
+		return status.Error(codes.Internal, msg)
 	}
 
-	s.signalUpdate()
-
-	signal := make(chan struct{}, 1)
-
-	s.updateSignalsMu.Lock()
-
-	s.updateSignals[player.PlayerId] = signal
-
-	s.updateSignalsMu.Unlock()
-
-	for {
-		select {
-		case <-stream.Context().Done():
-			return status.Error(codes.Canceled, "cancelled")
-
-		case <-signal:
-			s.gameStateMu.Lock()
-			if err := stream.Send(s.gameState); err != nil {
-				s.gameStateMu.Unlock()
-				msg := "failed to send game state"
-				log.Printf("%s: %v\n", msg, err)
-				return status.Error(codes.Internal, msg)
-			}
-			s.gameStateMu.Unlock()
-		}
-	}
-}
-
-func (s *Server) processInput(input *pb.PlayerInput) error {
-	s.gameStateMu.Lock()
-	defer s.gameStateMu.Unlock()
-
-	var player *pb.PlayerState
-	for _, p := range s.gameState.Players {
-		if p.PlayerId == input.PlayerId {
-			player = p
-			break
-		}
-	}
-	if player == nil {
-		return status.Error(codes.NotFound, "player not found")
-	}
-
-	// Handle Action
-	switch input.Action {
-	case pb.PlayerInput_MOVE_UP:
-		player.Position.Y += 1
-		s.signalUpdate()
-
-	case pb.PlayerInput_MOVE_RIGHT:
-		player.Position.X += 1
-		s.signalUpdate()
-
-	case pb.PlayerInput_MOVE_DOWN:
-		player.Position.Y -= 1
-		s.signalUpdate()
-
-	case pb.PlayerInput_MOVE_LEFT:
-		player.Position.X -= 1
-		s.signalUpdate()
-	}
-
+	<-stream.Context().Done()
 	return nil
 }
 
-func (s *Server) signalUpdate() {
-	s.updateSignalsMu.Lock()
-	defer s.updateSignalsMu.Unlock()
-	for _, signal := range s.updateSignals {
-		select {
-		case signal <- struct{}{}:
-			// send
+func (s *Server) generateUniquePlayerId() (int32, error) {
+	s.gameWorld.gameStateMu.Lock()
+	defer s.gameWorld.gameStateMu.Unlock()
 
-		default:
-			// do not block
+	if len(s.gameWorld.gameState.Players) >= 2 {
+		return -1, status.Error(codes.OutOfRange, "number of max players reached")
+	}
+
+	var playerId int32 = 0
+	if len(s.gameWorld.gameState.Players) == 0 {
+		playerId = 1
+	} else {
+		pId := s.gameWorld.gameState.Players[0].PlayerId
+		if pId == 1 {
+			playerId = 2
+		} else {
+			playerId = 1
 		}
 	}
+
+	return playerId, nil
 }
 
 func DeleteElementOrdered[T any](slice []T, index int) []T {
