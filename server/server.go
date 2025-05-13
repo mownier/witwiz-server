@@ -59,11 +59,9 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 	}
 
 	player := &pb.PlayerState{
-		PlayerId:          playerId,
-		PositionX:         0,
-		PositionY:         0,
-		BoundingBoxWidth:  32,
-		BoundingBoxHeight: 32,
+		PlayerId:    playerId,
+		Position:    &pb.Vector2{X: 0, Y: 0},
+		BoundingBox: &pb.BoundingBox{Width: 32, Height: 32},
 	}
 	s.gameState.Players = append(s.gameState.Players, player)
 
@@ -185,19 +183,19 @@ func (s *Server) processInput(input *pb.PlayerInput) error {
 	// Handle Action
 	switch input.Action {
 	case pb.PlayerInput_MOVE_UP:
-		player.PositionY += 1
+		player.Position.Y += 1
 		s.signalUpdate()
 
 	case pb.PlayerInput_MOVE_RIGHT:
-		player.PositionX += 1
+		player.Position.X += 1
 		s.signalUpdate()
 
 	case pb.PlayerInput_MOVE_DOWN:
-		player.PositionY -= 1
+		player.Position.Y -= 1
 		s.signalUpdate()
 
 	case pb.PlayerInput_MOVE_LEFT:
-		player.PositionX -= 1
+		player.Position.X -= 1
 		s.signalUpdate()
 	}
 
