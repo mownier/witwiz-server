@@ -223,6 +223,20 @@ func (gw *gameWorld) runGameLoop() {
 				player.Position.Y = 0
 				player.Velocity.Y = 0
 			}
+
+			gw.playerDataMu.Lock()
+			if playerData, exist := gw.playerData[player.PlayerId]; exist {
+				if player.Position.X >= (min(playerData.viewPort.Width, gw.viewPort.Width) - player.BoundingBox.Width) {
+					player.Position.X = (min(playerData.viewPort.Width, gw.viewPort.Width) - player.BoundingBox.Width)
+					player.Velocity.X = 0
+				}
+				if player.Position.Y >= (min(playerData.viewPort.Height, gw.viewPort.Height) - player.BoundingBox.Height) {
+					player.Position.Y = (min(playerData.viewPort.Height, gw.viewPort.Height) - player.BoundingBox.Height)
+					player.Velocity.Y = 0
+				}
+			}
+			gw.playerDataMu.Unlock()
+
 		}
 
 		if len(gw.gameState.Players) > 0 {
