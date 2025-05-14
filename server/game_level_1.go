@@ -8,7 +8,6 @@ type gameLevel1 struct {
 	worldScrollSpeed float32
 	bossEncountered  bool
 	bossPositionX    float32
-	gameLevel
 }
 
 func newGameLevel1() *gameLevel1 {
