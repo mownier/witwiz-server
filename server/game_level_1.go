@@ -1,22 +1,29 @@
 package server
 
-import pb "witwiz/proto"
+import (
+	"time"
+	pb "witwiz/proto"
+)
 
 type gameLevel1 struct {
-	viewPort         *pb.ViewPort
-	worldOffset      *pb.Vector2
-	worldScrollSpeed float32
-	bossEncountered  bool
-	bossPositionX    float32
+	viewPort            *pb.ViewPort
+	worldOffset         *pb.Vector2
+	worldScrollSpeed    float32
+	bossEncountered     bool
+	bossPositionX       float32
+	bossHealth          float32
+	bossHealthIsTicking bool
 }
 
 func newGameLevel1() *gameLevel1 {
 	return &gameLevel1{
-		viewPort:         &pb.ViewPort{Width: 5000, Height: 640},
-		worldOffset:      &pb.Vector2{X: 0, Y: 0},
-		worldScrollSpeed: 100,
-		bossEncountered:  false,
-		bossPositionX:    3000,
+		viewPort:            &pb.ViewPort{Width: 5000, Height: 640},
+		worldOffset:         &pb.Vector2{X: 0, Y: 0},
+		worldScrollSpeed:    100,
+		bossEncountered:     false,
+		bossPositionX:       3000,
+		bossHealth:          10,
+		bossHealthIsTicking: false,
 	}
 }
 
@@ -31,6 +38,7 @@ func (gl *gameLevel1) computeWorldOffsetX(currentWorldOffsetX float32, deltaTime
 	result := currentWorldOffsetX
 	result += gl.worldScrollSpeed * deltaTime
 	if result > gl.bossPositionX {
+		result = gl.bossPositionX
 		gl.bossEncountered = true
 		gl.worldScrollSpeed = 0
 	}
@@ -39,4 +47,26 @@ func (gl *gameLevel1) computeWorldOffsetX(currentWorldOffsetX float32, deltaTime
 
 func (gl *gameLevel1) worldViewPort() *pb.ViewPort {
 	return gl.viewPort
+}
+
+func (gl *gameLevel1) completed() bool {
+	if !gl.bossEncountered || gl.bossHealthIsTicking {
+		return false
+	}
+	if gl.bossHealth <= 0 {
+		return true
+	}
+	gl.bossHealthIsTicking = true
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			gl.bossHealth -= 2
+			if gl.bossHealth <= 0 {
+				break
+			}
+		}
+		gl.bossHealthIsTicking = false
+	}()
+	return false
 }

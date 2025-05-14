@@ -22,6 +22,7 @@ type gameLevel interface {
 	levelId() int32
 	worldViewPort() *pb.ViewPort
 	computeWorldOffsetX(currentWorldOffsetX float32, deltaTime float32) float32
+	completed() bool
 }
 
 type gameWorld struct {
@@ -48,30 +49,40 @@ func newGameWorld() *gameWorld {
 }
 
 func (gw *gameWorld) changeLevel(levelId int32) {
-	levelChanged := true
+	levelChanged := false
 
-	defer func() {
-		if !levelChanged {
-			return
-		}
-		gw.gameStateMu.Lock()
-		for _, player := range gw.gameState.Players {
-			player.Position.X = 0
-			player.Position.Y = 0
-		}
-		gw.gameState.Projectiles = []*pb.ProjectileState{}
-		gw.gameState.WorldOffset = &pb.Vector2{X: 0, Y: 0}
-		gw.gameStateMu.Unlock()
-	}()
+	gw.gameLevelMu.Lock()
 
 	switch levelId {
 	case 1:
-		gw.gameLevelMu.Lock()
 		gw.gameLevel = newGameLevel1()
-		gw.gameLevelMu.Unlock()
+		levelChanged = true
+
+	case 2:
+		gw.gameLevel = newGameLevel2()
+		levelChanged = true
 	}
 
-	levelChanged = false
+	worldViewPort := gw.gameLevel.worldViewPort()
+
+	gw.gameLevelMu.Unlock()
+
+	if !levelChanged {
+		return
+	}
+
+	gw.gameStateMu.Lock()
+
+	for _, player := range gw.gameState.Players {
+		player.Position.X = 0
+		player.Position.Y = 0
+	}
+	gw.gameState.Projectiles = []*pb.ProjectileState{}
+	gw.gameState.WorldOffset = &pb.Vector2{X: 0, Y: 0}
+	gw.gameState.LevelId = levelId
+	gw.gameState.WorldViewPort = worldViewPort
+
+	gw.gameStateMu.Unlock()
 }
 
 func (gw *gameWorld) addPlayer(player *pb.PlayerState, stream pb.WitWiz_JoinGameServer) {
@@ -270,10 +281,21 @@ func (gw *gameWorld) runGameLoop() {
 
 		if len(gw.gameState.Players) > 0 {
 			gw.gameLevelMu.Lock()
+
 			worldOffsetX := gw.gameLevel.computeWorldOffsetX(gw.gameState.WorldOffset.X, deltaTime)
+			levelId := gw.gameLevel.levelId()
+			levelCompleted := gw.gameLevel.completed()
+
 			gw.gameLevelMu.Unlock()
 
 			gw.gameState.WorldOffset.X = worldOffsetX
+
+			if levelCompleted && levelId != 2 {
+				nextLevelId := levelId + 1
+				gw.gameStateMu.Unlock()
+				gw.changeLevel(nextLevelId)
+				gw.gameStateMu.Lock()
+			}
 		}
 
 		gw.gameStateMu.Unlock()
