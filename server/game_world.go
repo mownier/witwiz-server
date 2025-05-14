@@ -26,6 +26,10 @@ type gameWorld struct {
 	playerData          map[int32]*playerData
 	playerDataMu        sync.Mutex
 	viewPort            *pb.ViewPort
+	worldOffset         *pb.Vector2
+	worldScrollSpeed    float32
+	bossEncountered     bool
+	bossWorldX          float32
 }
 
 func newGameWorld() *gameWorld {
@@ -33,10 +37,15 @@ func newGameWorld() *gameWorld {
 		gameState: &pb.GameStateUpdate{
 			Players:     []*pb.PlayerState{},
 			Projectiles: []*pb.ProjectileState{},
+			WorldOffset: &pb.Vector2{X: 0, Y: 0},
 		},
 		playerConnections: make(map[int32]*playerConnection),
 		playerData:        make(map[int32]*playerData),
 		viewPort:          &pb.ViewPort{Width: 5000, Height: 640},
+		worldOffset:       &pb.Vector2{X: 0, Y: 0},
+		worldScrollSpeed:  100,
+		bossEncountered:   false,
+		bossWorldX:        3000,
 	}
 }
 
@@ -215,6 +224,18 @@ func (gw *gameWorld) runGameLoop() {
 				player.Velocity.Y = 0
 			}
 		}
+
+		if len(gw.gameState.Players) > 0 {
+			if !gw.bossEncountered {
+				gw.gameState.WorldOffset.X += gw.worldScrollSpeed * deltaTime
+				if gw.gameState.WorldOffset.X > gw.bossWorldX {
+					gw.bossEncountered = true
+					gw.worldScrollSpeed = 0
+					// Spawn boss
+				}
+			}
+		}
+
 		gw.gameStateMu.Unlock()
 
 		gw.sendGameStateUpdates()
