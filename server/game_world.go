@@ -18,6 +18,12 @@ const (
 	tickRate                   = time.Millisecond * 50
 )
 
+type gameLevel interface {
+	levelId() int32
+	worldViewPort() *pb.ViewPort
+	computeWorldOffsetX(currentWorldOffsetX float32, deltaTime float32) float32
+}
+
 type gameWorld struct {
 	gameState           *pb.GameStateUpdate
 	gameStateMu         sync.Mutex
@@ -25,11 +31,8 @@ type gameWorld struct {
 	playerConnectionsMu sync.Mutex
 	playerData          map[int32]*playerData
 	playerDataMu        sync.Mutex
-	viewPort            *pb.ViewPort
-	worldOffset         *pb.Vector2
-	worldScrollSpeed    float32
-	bossEncountered     bool
-	bossWorldX          float32
+	gameLevel           gameLevel
+	gameLevelMu         sync.Mutex
 }
 
 func newGameWorld() *gameWorld {
@@ -41,12 +44,34 @@ func newGameWorld() *gameWorld {
 		},
 		playerConnections: make(map[int32]*playerConnection),
 		playerData:        make(map[int32]*playerData),
-		viewPort:          &pb.ViewPort{Width: 5000, Height: 640},
-		worldOffset:       &pb.Vector2{X: 0, Y: 0},
-		worldScrollSpeed:  100,
-		bossEncountered:   false,
-		bossWorldX:        3000,
 	}
+}
+
+func (gw *gameWorld) changeLevel(levelId int32) {
+	levelChanged := true
+
+	defer func() {
+		if !levelChanged {
+			return
+		}
+		gw.gameStateMu.Lock()
+		for _, player := range gw.gameState.Players {
+			player.Position.X = 0
+			player.Position.Y = 0
+		}
+		gw.gameState.Projectiles = []*pb.ProjectileState{}
+		gw.gameState.WorldOffset = &pb.Vector2{X: 0, Y: 0}
+		gw.gameStateMu.Unlock()
+	}()
+
+	switch levelId {
+	case 1:
+		gw.gameLevelMu.Lock()
+		gw.gameLevel = newGameLevel1()
+		gw.gameLevelMu.Unlock()
+	}
+
+	levelChanged = false
 }
 
 func (gw *gameWorld) addPlayer(player *pb.PlayerState, stream pb.WitWiz_JoinGameServer) {
@@ -224,14 +249,18 @@ func (gw *gameWorld) runGameLoop() {
 				player.Velocity.Y = 0
 			}
 
+			gw.gameLevelMu.Lock()
+			worldViewPort := gw.gameLevel.worldViewPort()
+			gw.gameLevelMu.Unlock()
+
 			gw.playerDataMu.Lock()
 			if playerData, exist := gw.playerData[player.PlayerId]; exist {
-				if player.Position.X >= (min(playerData.viewPort.Width, gw.viewPort.Width) - player.BoundingBox.Width) {
-					player.Position.X = (min(playerData.viewPort.Width, gw.viewPort.Width) - player.BoundingBox.Width)
+				if player.Position.X >= (min(playerData.viewPort.Width, worldViewPort.Width) - player.BoundingBox.Width) {
+					player.Position.X = (min(playerData.viewPort.Width, worldViewPort.Width) - player.BoundingBox.Width)
 					player.Velocity.X = 0
 				}
-				if player.Position.Y >= (min(playerData.viewPort.Height, gw.viewPort.Height) - player.BoundingBox.Height) {
-					player.Position.Y = (min(playerData.viewPort.Height, gw.viewPort.Height) - player.BoundingBox.Height)
+				if player.Position.Y >= (min(playerData.viewPort.Height, worldViewPort.Height) - player.BoundingBox.Height) {
+					player.Position.Y = (min(playerData.viewPort.Height, worldViewPort.Height) - player.BoundingBox.Height)
 					player.Velocity.Y = 0
 				}
 			}
@@ -240,14 +269,11 @@ func (gw *gameWorld) runGameLoop() {
 		}
 
 		if len(gw.gameState.Players) > 0 {
-			if !gw.bossEncountered {
-				gw.gameState.WorldOffset.X += gw.worldScrollSpeed * deltaTime
-				if gw.gameState.WorldOffset.X > gw.bossWorldX {
-					gw.bossEncountered = true
-					gw.worldScrollSpeed = 0
-					// Spawn boss
-				}
-			}
+			gw.gameLevelMu.Lock()
+			worldOffsetX := gw.gameLevel.computeWorldOffsetX(gw.gameState.WorldOffset.X, deltaTime)
+			gw.gameLevelMu.Unlock()
+
+			gw.gameState.WorldOffset.X = worldOffsetX
 		}
 
 		gw.gameStateMu.Unlock()

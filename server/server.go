@@ -84,7 +84,20 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 		}
 	}()
 
-	initialUpdate := &pb.GameStateUpdate{YourPlayerId: player.PlayerId, WorldViewPort: s.gameWorld.viewPort}
+	var viewPort *pb.ViewPort
+	var levelId int32
+
+	s.gameWorld.gameLevelMu.Lock()
+	if s.gameWorld.gameLevel == nil {
+		s.gameWorld.gameLevelMu.Unlock()
+		s.gameWorld.changeLevel(1)
+		s.gameWorld.gameLevelMu.Lock()
+	}
+	viewPort = s.gameWorld.gameLevel.worldViewPort()
+	levelId = s.gameWorld.gameLevel.levelId()
+	s.gameWorld.gameLevelMu.Unlock()
+
+	initialUpdate := &pb.GameStateUpdate{YourPlayerId: player.PlayerId, WorldViewPort: viewPort, LevelId: levelId}
 	if err := stream.Send(initialUpdate); err != nil {
 		msg := "failed to send initial update"
 		log.Printf("%s: %v\n", msg, err)
