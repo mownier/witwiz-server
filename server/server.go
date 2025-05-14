@@ -84,7 +84,7 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 		}
 	}()
 
-	initialUpdate := &pb.GameStateUpdate{YourPlayerId: player.PlayerId}
+	initialUpdate := &pb.GameStateUpdate{YourPlayerId: player.PlayerId, WorldViewPort: s.gameWorld.viewPort}
 	if err := stream.Send(initialUpdate); err != nil {
 		msg := "failed to send initial update"
 		log.Printf("%s: %v\n", msg, err)

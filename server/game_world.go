@@ -23,6 +23,9 @@ type gameWorld struct {
 	gameStateMu         sync.Mutex
 	playerConnections   map[int32]*playerConnection
 	playerConnectionsMu sync.Mutex
+	playerData          map[int32]*playerData
+	playerDataMu        sync.Mutex
+	viewPort            *pb.ViewPort
 }
 
 func newGameWorld() *gameWorld {
@@ -32,6 +35,8 @@ func newGameWorld() *gameWorld {
 			Projectiles: []*pb.ProjectileState{},
 		},
 		playerConnections: make(map[int32]*playerConnection),
+		playerData:        make(map[int32]*playerData),
+		viewPort:          &pb.ViewPort{Width: 5000, Height: 640},
 	}
 }
 
@@ -43,6 +48,10 @@ func (gw *gameWorld) addPlayer(player *pb.PlayerState, stream pb.WitWiz_JoinGame
 	gw.playerConnectionsMu.Lock()
 	gw.playerConnections[player.PlayerId] = &playerConnection{playerId: player.PlayerId, stream: stream}
 	gw.playerConnectionsMu.Unlock()
+
+	gw.playerDataMu.Lock()
+	gw.playerData[player.PlayerId] = &playerData{viewPort: &pb.ViewPort{Width: 0, Height: 0}}
+	gw.playerDataMu.Unlock()
 
 	log.Printf("player %d joined the game world\n", player.PlayerId)
 }
@@ -65,6 +74,10 @@ func (gw *gameWorld) removePlayer(playerId int32) {
 	delete(gw.playerConnections, playerId)
 	gw.playerConnectionsMu.Unlock()
 
+	gw.playerDataMu.Lock()
+	delete(gw.playerData, playerId)
+	gw.playerDataMu.Unlock()
+
 	log.Printf("player %d left the game world\n", playerId)
 }
 
@@ -85,6 +98,13 @@ func (gw *gameWorld) processInput(input *pb.PlayerInput) error {
 
 	// Handle Action
 	switch input.Action {
+	case pb.PlayerInput_REPORT_VIEWPORT:
+		gw.playerDataMu.Lock()
+		if playerData, exists := gw.playerData[player.PlayerId]; exists {
+			playerData.viewPort = input.ViewPort
+		}
+		gw.playerDataMu.Unlock()
+
 	case pb.PlayerInput_MOVE_RIGHT_START:
 		player.Acceleration.X = playerAcceleration
 		player.TargetVelocity.X = playerMaxSpeed
