@@ -34,6 +34,7 @@ type gameWorld struct {
 	playerDataMu        sync.Mutex
 	gameLevel           gameLevel
 	gameLevelMu         sync.Mutex
+	restarting          bool
 }
 
 func newGameWorld() *gameWorld {
@@ -44,9 +45,11 @@ func newGameWorld() *gameWorld {
 			WorldOffset:  &pb.Vector2{X: 0, Y: 0},
 			GameStarted:  false,
 			CharacterIds: []int32{1, 2, 3, 4, 5},
+			GameOver:     false,
 		},
 		playerConnections: make(map[int32]*playerConnection),
 		playerData:        make(map[int32]*playerData),
+		restarting:        false,
 	}
 }
 
@@ -219,6 +222,51 @@ func (gw *gameWorld) runGameLoop() {
 			continue
 		}
 
+		if gw.gameState.GameOver {
+			if gw.restarting {
+				gw.gameStateMu.Unlock()
+				gw.sendGameStateUpdates()
+				continue
+			}
+			gw.restarting = true
+			go func() {
+				restartTicker := time.NewTicker(5 * time.Second)
+				defer restartTicker.Stop()
+				<-restartTicker.C
+				gw.gameStateMu.Lock()
+				newGameState := &pb.GameStateUpdate{
+					Players:      []*pb.PlayerState{},
+					Projectiles:  []*pb.ProjectileState{},
+					WorldOffset:  &pb.Vector2{X: 0, Y: 0},
+					GameStarted:  false,
+					CharacterIds: []int32{1, 2, 3, 4, 5},
+					GameOver:     false,
+				}
+				for _, p := range gw.gameState.Players {
+					newGameState.Players = append(newGameState.Players, &pb.PlayerState{
+						PlayerId:       p.PlayerId,
+						Position:       &pb.Vector2{X: 0, Y: 0},
+						Acceleration:   &pb.Vector2{X: 0, Y: 0},
+						Velocity:       &pb.Vector2{X: 0, Y: 0},
+						TargetVelocity: &pb.Vector2{X: 0, Y: 0},
+						BoundingBox:    &pb.BoundingBox{Width: 32, Height: 32},
+						MaxSpeed:       playerMaxSpeed,
+						CharacterId:    0,
+					})
+				}
+				gw.gameState = newGameState
+				gw.restarting = false
+				gw.gameStateMu.Unlock()
+
+				gw.gameLevelMu.Lock()
+				gw.gameLevel = nil
+				gw.gameLevelMu.Unlock()
+			}()
+			gw.gameStateMu.Unlock()
+			gw.sendGameStateUpdates()
+			continue
+		}
+
 		gw.gameLevelMu.Lock()
 		if gw.gameLevel == nil {
 			gw.gameLevelMu.Unlock()
@@ -229,11 +277,15 @@ func (gw *gameWorld) runGameLoop() {
 		}
 		gw.gameLevelMu.Unlock()
 
+		worldShouldMove := false
+
 		for _, player := range gw.gameState.Players {
-			if player.CharacterId == -1 {
+			if player.CharacterId < 1 {
 				// Do nothing since player has not yet selected a character
 				continue
 			}
+
+			worldShouldMove = true
 
 			// Apply acceleration
 			player.Velocity.X += player.Acceleration.X * deltaTime
@@ -314,7 +366,7 @@ func (gw *gameWorld) runGameLoop() {
 			gw.playerDataMu.Unlock()
 		}
 
-		if len(gw.gameState.Players) > 0 {
+		if len(gw.gameState.Players) > 0 && worldShouldMove {
 			gw.gameLevelMu.Lock()
 
 			worldOffsetX := gw.gameLevel.computeWorldOffsetX(gw.gameState.WorldOffset.X, deltaTime)
@@ -325,11 +377,15 @@ func (gw *gameWorld) runGameLoop() {
 
 			gw.gameState.WorldOffset.X = worldOffsetX
 
-			if levelCompleted && levelId != 2 {
-				nextLevelId := levelId + 1
-				gw.gameStateMu.Unlock()
-				gw.changeLevel(nextLevelId)
-				gw.gameStateMu.Lock()
+			if levelCompleted {
+				if levelId == 2 {
+					gw.gameState.GameOver = true
+				} else {
+					nextLevelId := levelId + 1
+					gw.gameStateMu.Unlock()
+					gw.changeLevel(nextLevelId)
+					gw.gameStateMu.Lock()
+				}
 			}
 		}
 

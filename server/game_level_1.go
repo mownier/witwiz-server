@@ -56,7 +56,7 @@ func (gl *gameLevel1) completed() bool {
 	}
 	gl.bossHealthIsTicking = true
 	go func() {
-		ticker := time.NewTicker(3 * time.Second)
+		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			gl.bossHealth -= 2
