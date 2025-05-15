@@ -7,7 +7,6 @@ import (
 
 type gameLevel1 struct {
 	viewPort            *pb.ViewPort
-	worldOffset         *pb.Vector2
 	worldScrollSpeed    float32
 	bossEncountered     bool
 	bossPositionX       float32
@@ -17,8 +16,7 @@ type gameLevel1 struct {
 
 func newGameLevel1() *gameLevel1 {
 	return &gameLevel1{
-		viewPort:            &pb.ViewPort{Width: 5000, Height: 640},
-		worldOffset:         &pb.Vector2{X: 0, Y: 0},
+		viewPort:            &pb.ViewPort{Width: 5000, Height: 720},
 		worldScrollSpeed:    100,
 		bossEncountered:     false,
 		bossPositionX:       3000,
