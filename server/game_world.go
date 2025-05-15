@@ -39,9 +39,11 @@ type gameWorld struct {
 func newGameWorld() *gameWorld {
 	return &gameWorld{
 		gameState: &pb.GameStateUpdate{
-			Players:     []*pb.PlayerState{},
-			Projectiles: []*pb.ProjectileState{},
-			WorldOffset: &pb.Vector2{X: 0, Y: 0},
+			Players:      []*pb.PlayerState{},
+			Projectiles:  []*pb.ProjectileState{},
+			WorldOffset:  &pb.Vector2{X: 0, Y: 0},
+			GameStarted:  false,
+			CharacterIds: []int32{1, 2, 3, 4, 5},
 		},
 		playerConnections: make(map[int32]*playerConnection),
 		playerData:        make(map[int32]*playerData),
@@ -141,15 +143,27 @@ func (gw *gameWorld) processInput(input *pb.PlayerInput) error {
 		return status.Error(codes.NotFound, "player not found")
 	}
 
-	// Handle Action
+	// Handle action on game not started
 	switch input.Action {
+	case pb.PlayerInput_SELECT_CHARACTER:
+		player.CharacterId = input.CharacterId
+
+	case pb.PlayerInput_START_GAME:
+		gw.gameState.GameStarted = true
+
 	case pb.PlayerInput_REPORT_VIEWPORT:
 		gw.playerDataMu.Lock()
 		if playerData, exists := gw.playerData[player.PlayerId]; exists {
 			playerData.viewPort = input.ViewPort
 		}
 		gw.playerDataMu.Unlock()
+	}
 
+	if !gw.gameState.GameStarted {
+		return nil
+	}
+
+	switch input.Action {
 	case pb.PlayerInput_MOVE_RIGHT_START:
 		player.Acceleration.X = playerAcceleration
 		player.TargetVelocity.X = playerMaxSpeed
@@ -198,7 +212,29 @@ func (gw *gameWorld) runGameLoop() {
 		previousTime = currentTime
 
 		gw.gameStateMu.Lock()
+
+		if !gw.gameState.GameStarted {
+			gw.gameStateMu.Unlock()
+			gw.sendGameStateUpdates()
+			continue
+		}
+
+		gw.gameLevelMu.Lock()
+		if gw.gameLevel == nil {
+			gw.gameLevelMu.Unlock()
+			gw.gameStateMu.Unlock()
+			gw.changeLevel(1)
+			gw.gameLevelMu.Lock()
+			gw.gameStateMu.Lock()
+		}
+		gw.gameLevelMu.Unlock()
+
 		for _, player := range gw.gameState.Players {
+			if player.CharacterId == -1 {
+				// Do nothing since player has not yet selected a character
+				continue
+			}
+
 			// Apply acceleration
 			player.Velocity.X += player.Acceleration.X * deltaTime
 			player.Velocity.Y += player.Acceleration.Y * deltaTime
@@ -276,7 +312,6 @@ func (gw *gameWorld) runGameLoop() {
 				}
 			}
 			gw.playerDataMu.Unlock()
-
 		}
 
 		if len(gw.gameState.Players) > 0 {

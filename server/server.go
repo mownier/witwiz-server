@@ -37,6 +37,13 @@ func (s *Server) JoinGame(stream pb.WitWiz_JoinGameServer) error {
 }
 
 func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
+	s.gameWorld.gameStateMu.Lock()
+	if len(s.gameWorld.gameState.Players) >= 2 {
+		s.gameWorld.gameStateMu.Unlock()
+		return status.Error(codes.PermissionDenied, "max player count reached")
+	}
+	s.gameWorld.gameStateMu.Unlock()
+
 	playerId, err := s.generateUniquePlayerId()
 	if err != nil {
 		return err
@@ -50,6 +57,7 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 		TargetVelocity: &pb.Vector2{X: 0, Y: 0},
 		BoundingBox:    &pb.BoundingBox{Width: 32, Height: 32},
 		MaxSpeed:       playerMaxSpeed,
+		CharacterId:    0,
 	}
 
 	s.gameWorld.addPlayer(player, stream)
@@ -84,20 +92,28 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 		}
 	}()
 
-	var viewPort *pb.ViewPort
-	var levelId int32
+	var gameStarted bool = false
+	var viewPort *pb.ViewPort = nil
+	var levelId int32 = -1
+
+	s.gameWorld.gameStateMu.Lock()
+	gameStarted = s.gameWorld.gameState.GameStarted
+	s.gameWorld.gameStateMu.Unlock()
 
 	s.gameWorld.gameLevelMu.Lock()
-	if s.gameWorld.gameLevel == nil {
-		s.gameWorld.gameLevelMu.Unlock()
-		s.gameWorld.changeLevel(1)
-		s.gameWorld.gameLevelMu.Lock()
+	if gameStarted {
+		levelId = s.gameWorld.gameLevel.levelId()
+		viewPort = s.gameWorld.gameLevel.worldViewPort()
 	}
-	viewPort = s.gameWorld.gameLevel.worldViewPort()
-	levelId = s.gameWorld.gameLevel.levelId()
 	s.gameWorld.gameLevelMu.Unlock()
 
-	initialUpdate := &pb.GameStateUpdate{YourPlayerId: player.PlayerId, WorldViewPort: viewPort, LevelId: levelId}
+	initialUpdate := &pb.GameStateUpdate{YourPlayerId: player.PlayerId, GameStarted: gameStarted}
+	if viewPort != nil {
+		initialUpdate.WorldViewPort = viewPort
+	}
+	if levelId == -1 {
+		initialUpdate.LevelId = levelId
+	}
 	if err := stream.Send(initialUpdate); err != nil {
 		msg := "failed to send initial update"
 		log.Printf("%s: %v\n", msg, err)
