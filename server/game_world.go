@@ -191,6 +191,10 @@ func (gw *gameWorld) processInput(input *pb.PlayerInput) error {
 	}
 
 	if gw.gameState.GamePaused {
+		player.Acceleration.X = 0.0
+		player.Acceleration.Y = 0.0
+		player.TargetVelocity.X = 0.0
+		player.TargetVelocity.Y = 0.0
 		return nil
 	}
 
