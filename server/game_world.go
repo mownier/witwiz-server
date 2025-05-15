@@ -187,7 +187,12 @@ func (gw *gameWorld) processInput(input *pb.PlayerInput) error {
 
 	switch input.Action {
 	case pb.PlayerInput_PAUSE_RESUME:
-		gw.gameState.GamePaused = !gw.gameState.GamePaused
+		for _, characId := range gw.gameState.CharacterIds {
+			if characId == player.CharacterId {
+				gw.gameState.GamePaused = !gw.gameState.GamePaused
+				break
+			}
+		}
 	}
 
 	if gw.gameState.GamePaused {
@@ -299,7 +304,15 @@ func (gw *gameWorld) runGameLoop() {
 		worldShouldMove := false
 
 		for _, player := range gw.gameState.Players {
-			if player.CharacterId < 1 {
+			// Check if player has selected a character
+			var didSelectCharacter bool = false
+			for _, characId := range gw.gameState.CharacterIds {
+				if player.CharacterId == characId {
+					didSelectCharacter = true
+					break
+				}
+			}
+			if !didSelectCharacter {
 				// Do nothing since player has not yet selected a character
 				continue
 			}
