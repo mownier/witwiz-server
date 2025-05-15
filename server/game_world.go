@@ -4,6 +4,7 @@ import (
 	"log"
 	"sync"
 	"time"
+	gl "witwiz/game_level"
 	pb "witwiz/proto"
 
 	"google.golang.org/grpc/codes"
@@ -18,13 +19,6 @@ const (
 	tickRate                   = time.Millisecond * 50
 )
 
-type gameLevel interface {
-	levelId() int32
-	worldViewPort() *pb.ViewPort
-	computeWorldOffsetX(currentWorldOffsetX float32, deltaTime float32) float32
-	completed() bool
-}
-
 type gameWorld struct {
 	gameState           *pb.GameStateUpdate
 	gameStateMu         sync.Mutex
@@ -32,25 +26,53 @@ type gameWorld struct {
 	playerConnectionsMu sync.Mutex
 	playerData          map[int32]*playerData
 	playerDataMu        sync.Mutex
-	gameLevel           gameLevel
+	gameLevel           gl.GameLevel
+	gameLevels          []int32
 	gameLevelMu         sync.Mutex
 	restarting          bool
 }
 
 func newGameWorld() *gameWorld {
 	return &gameWorld{
-		gameState: &pb.GameStateUpdate{
-			Players:      []*pb.PlayerState{},
-			Projectiles:  []*pb.ProjectileState{},
-			WorldOffset:  &pb.Vector2{X: 0, Y: 0},
-			GameStarted:  false,
-			CharacterIds: []int32{1, 2, 3, 4, 5},
-			GameOver:     false,
-		},
+		gameState:         newGameStateUpdate(),
 		playerConnections: make(map[int32]*playerConnection),
 		playerData:        make(map[int32]*playerData),
+		gameLevel:         nil,
+		gameLevels:        gameLevelArrangement(),
 		restarting:        false,
 	}
+}
+
+func newGameStateUpdate() *pb.GameStateUpdate {
+	return &pb.GameStateUpdate{
+		Players:       []*pb.PlayerState{},
+		Projectiles:   []*pb.ProjectileState{},
+		CharacterIds:  []int32{1, 2, 3, 4, 5},
+		WorldViewPort: &pb.ViewPort{Width: 0, Height: 0},
+		WorldOffset:   &pb.Vector2{X: 0, Y: 0},
+		LevelId:       0,
+		GameStarted:   false,
+		GameOver:      false,
+		GamePaused:    false,
+		IsInitial:     false,
+	}
+}
+
+func newPlayerState(playerId int32) *pb.PlayerState {
+	return &pb.PlayerState{
+		PlayerId:       playerId,
+		CharacterId:    0,
+		MaxSpeed:       playerMaxSpeed,
+		Position:       &pb.Vector2{X: 0, Y: 0},
+		Velocity:       &pb.Vector2{X: 0, Y: 0},
+		Acceleration:   &pb.Vector2{X: 0, Y: 0},
+		TargetVelocity: &pb.Vector2{X: 0, Y: 0},
+		BoundingBox:    &pb.BoundingBox{Width: 32, Height: 32},
+	}
+}
+
+func gameLevelArrangement() []int32 {
+	return []int32{1, 2}
 }
 
 func (gw *gameWorld) changeLevel(levelId int32) {
@@ -60,15 +82,15 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 
 	switch levelId {
 	case 1:
-		gw.gameLevel = newGameLevel1()
+		gw.gameLevel = gl.NewGameLevel1()
 		levelChanged = true
 
 	case 2:
-		gw.gameLevel = newGameLevel2()
+		gw.gameLevel = gl.NewGameLevel2()
 		levelChanged = true
 	}
 
-	worldViewPort := gw.gameLevel.worldViewPort()
+	worldViewPort := gw.gameLevel.WorldViewPort()
 
 	gw.gameLevelMu.Unlock()
 
@@ -146,12 +168,9 @@ func (gw *gameWorld) processInput(input *pb.PlayerInput) error {
 		return status.Error(codes.NotFound, "player not found")
 	}
 
-	// Handle action on game not started
 	switch input.Action {
 	case pb.PlayerInput_SELECT_CHARACTER:
 		player.CharacterId = input.CharacterId
-
-	case pb.PlayerInput_START_GAME:
 		gw.gameState.GameStarted = true
 
 	case pb.PlayerInput_REPORT_VIEWPORT:
@@ -163,6 +182,15 @@ func (gw *gameWorld) processInput(input *pb.PlayerInput) error {
 	}
 
 	if !gw.gameState.GameStarted {
+		return nil
+	}
+
+	switch input.Action {
+	case pb.PlayerInput_PAUSE_RESUME:
+		gw.gameState.GamePaused = !gw.gameState.GamePaused
+	}
+
+	if gw.gameState.GamePaused {
 		return nil
 	}
 
@@ -216,7 +244,7 @@ func (gw *gameWorld) runGameLoop() {
 
 		gw.gameStateMu.Lock()
 
-		if !gw.gameState.GameStarted {
+		if !gw.gameState.GameStarted || gw.gameState.GamePaused {
 			gw.gameStateMu.Unlock()
 			gw.sendGameStateUpdates()
 			continue
@@ -234,25 +262,9 @@ func (gw *gameWorld) runGameLoop() {
 				defer restartTicker.Stop()
 				<-restartTicker.C
 				gw.gameStateMu.Lock()
-				newGameState := &pb.GameStateUpdate{
-					Players:      []*pb.PlayerState{},
-					Projectiles:  []*pb.ProjectileState{},
-					WorldOffset:  &pb.Vector2{X: 0, Y: 0},
-					GameStarted:  false,
-					CharacterIds: []int32{1, 2, 3, 4, 5},
-					GameOver:     false,
-				}
+				newGameState := newGameStateUpdate()
 				for _, p := range gw.gameState.Players {
-					newGameState.Players = append(newGameState.Players, &pb.PlayerState{
-						PlayerId:       p.PlayerId,
-						Position:       &pb.Vector2{X: 0, Y: 0},
-						Acceleration:   &pb.Vector2{X: 0, Y: 0},
-						Velocity:       &pb.Vector2{X: 0, Y: 0},
-						TargetVelocity: &pb.Vector2{X: 0, Y: 0},
-						BoundingBox:    &pb.BoundingBox{Width: 32, Height: 32},
-						MaxSpeed:       playerMaxSpeed,
-						CharacterId:    0,
-					})
+					newGameState.Players = append(newGameState.Players, newPlayerState(p.PlayerId))
 				}
 				gw.gameState = newGameState
 				gw.restarting = false
@@ -260,6 +272,7 @@ func (gw *gameWorld) runGameLoop() {
 
 				gw.gameLevelMu.Lock()
 				gw.gameLevel = nil
+				gw.gameLevels = gameLevelArrangement()
 				gw.gameLevelMu.Unlock()
 			}()
 			gw.gameStateMu.Unlock()
@@ -269,9 +282,11 @@ func (gw *gameWorld) runGameLoop() {
 
 		gw.gameLevelMu.Lock()
 		if gw.gameLevel == nil {
+			nextLevelId := gw.gameLevels[0]
+			gw.gameLevels = DeleteElementOrdered(gw.gameLevels, 0)
 			gw.gameLevelMu.Unlock()
 			gw.gameStateMu.Unlock()
-			gw.changeLevel(1)
+			gw.changeLevel(nextLevelId)
 			gw.gameLevelMu.Lock()
 			gw.gameStateMu.Lock()
 		}
@@ -349,7 +364,7 @@ func (gw *gameWorld) runGameLoop() {
 			}
 
 			gw.gameLevelMu.Lock()
-			worldViewPort := gw.gameLevel.worldViewPort()
+			worldViewPort := gw.gameLevel.WorldViewPort()
 			gw.gameLevelMu.Unlock()
 
 			gw.playerDataMu.Lock()
@@ -366,27 +381,32 @@ func (gw *gameWorld) runGameLoop() {
 			gw.playerDataMu.Unlock()
 		}
 
-		if len(gw.gameState.Players) > 0 && worldShouldMove {
+		if worldShouldMove {
 			gw.gameLevelMu.Lock()
-
-			worldOffsetX := gw.gameLevel.computeWorldOffsetX(gw.gameState.WorldOffset.X, deltaTime)
-			levelId := gw.gameLevel.levelId()
-			levelCompleted := gw.gameLevel.completed()
-
+			gw.gameState.WorldOffset.X = gw.gameLevel.ComputeWorldOffsetX(gw.gameState.WorldOffset.X, deltaTime)
 			gw.gameLevelMu.Unlock()
+		}
 
-			gw.gameState.WorldOffset.X = worldOffsetX
+		var gameOver bool = false
+		var nextLevelId int32 = -1
 
-			if levelCompleted {
-				if levelId == 2 {
-					gw.gameState.GameOver = true
-				} else {
-					nextLevelId := levelId + 1
-					gw.gameStateMu.Unlock()
-					gw.changeLevel(nextLevelId)
-					gw.gameStateMu.Lock()
-				}
+		gw.gameLevelMu.Lock()
+		if gw.gameLevel.Completed() {
+			if len(gw.gameLevels) == 0 {
+				gameOver = true
+			} else {
+				nextLevelId = gw.gameLevels[0]
+				gw.gameLevels = DeleteElementOrdered(gw.gameLevels, 0)
 			}
+		}
+		gw.gameLevelMu.Unlock()
+
+		if gameOver {
+			gw.gameState.GameOver = true
+		} else {
+			gw.gameStateMu.Unlock()
+			gw.changeLevel(nextLevelId)
+			gw.gameStateMu.Lock()
 		}
 
 		gw.gameStateMu.Unlock()

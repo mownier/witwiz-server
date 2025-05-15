@@ -37,28 +37,12 @@ func (s *Server) JoinGame(stream pb.WitWiz_JoinGameServer) error {
 }
 
 func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
-	s.gameWorld.gameStateMu.Lock()
-	if len(s.gameWorld.gameState.Players) >= 2 {
-		s.gameWorld.gameStateMu.Unlock()
-		return status.Error(codes.PermissionDenied, "max player count reached")
-	}
-	s.gameWorld.gameStateMu.Unlock()
-
 	playerId, err := s.generateUniquePlayerId()
 	if err != nil {
 		return err
 	}
 
-	player := &pb.PlayerState{
-		PlayerId:       playerId,
-		Position:       &pb.Vector2{X: 0, Y: 0},
-		Acceleration:   &pb.Vector2{X: 0, Y: 0},
-		Velocity:       &pb.Vector2{X: 0, Y: 0},
-		TargetVelocity: &pb.Vector2{X: 0, Y: 0},
-		BoundingBox:    &pb.BoundingBox{Width: 32, Height: 32},
-		MaxSpeed:       playerMaxSpeed,
-		CharacterId:    0,
-	}
+	player := newPlayerState(playerId)
 
 	s.gameWorld.addPlayer(player, stream)
 
@@ -92,30 +76,11 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 		}
 	}()
 
-	var gameStarted bool = false
-	var viewPort *pb.ViewPort = nil
-	var levelId int32 = -1
-
-	s.gameWorld.gameStateMu.Lock()
-	gameStarted = s.gameWorld.gameState.GameStarted
-	s.gameWorld.gameStateMu.Unlock()
-
-	s.gameWorld.gameLevelMu.Lock()
-	if gameStarted {
-		levelId = s.gameWorld.gameLevel.levelId()
-		viewPort = s.gameWorld.gameLevel.worldViewPort()
-	}
-	s.gameWorld.gameLevelMu.Unlock()
-
-	initialUpdate := &pb.GameStateUpdate{YourPlayerId: player.PlayerId, GameStarted: gameStarted}
-	if viewPort != nil {
-		initialUpdate.WorldViewPort = viewPort
-	}
-	if levelId == -1 {
-		initialUpdate.LevelId = levelId
-	}
-	if err := stream.Send(initialUpdate); err != nil {
-		msg := "failed to send initial update"
+	initialData := newGameStateUpdate()
+	initialData.IsInitial = true
+	initialData.Players = append(initialData.Players, newPlayerState(playerId))
+	if err := stream.Send(initialData); err != nil {
+		msg := "failed to send initial data"
 		log.Printf("%s: %v\n", msg, err)
 		return status.Error(codes.Internal, msg)
 	}
@@ -123,6 +88,7 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 	s.gameWorld.gameStateMu.Lock()
 	initialGameState := proto.Clone(s.gameWorld.gameState).(*pb.GameStateUpdate)
 	s.gameWorld.gameStateMu.Unlock()
+
 	if err := stream.Send(initialGameState); err != nil {
 		msg := "failed to send initial game state"
 		log.Printf("%s: %v\n", msg, err)

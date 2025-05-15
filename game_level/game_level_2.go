@@ -1,11 +1,11 @@
-package server
+package game_level
 
 import (
 	"time"
 	pb "witwiz/proto"
 )
 
-type gameLevel1 struct {
+type GameLevel2 struct {
 	viewPort            *pb.ViewPort
 	worldScrollSpeed    float32
 	bossEncountered     bool
@@ -14,22 +14,22 @@ type gameLevel1 struct {
 	bossHealthIsTicking bool
 }
 
-func newGameLevel1() *gameLevel1 {
-	return &gameLevel1{
-		viewPort:            &pb.ViewPort{Width: 5000, Height: 720},
-		worldScrollSpeed:    100,
+func NewGameLevel2() *GameLevel2 {
+	return &GameLevel2{
+		viewPort:            &pb.ViewPort{Width: 6000, Height: 720},
+		worldScrollSpeed:    200,
 		bossEncountered:     false,
-		bossPositionX:       3000,
+		bossPositionX:       4000,
 		bossHealth:          10,
 		bossHealthIsTicking: false,
 	}
 }
 
-func (gl *gameLevel1) levelId() int32 {
-	return 1
+func (gl *GameLevel2) LevelId() int32 {
+	return 2
 }
 
-func (gl *gameLevel1) computeWorldOffsetX(currentWorldOffsetX float32, deltaTime float32) float32 {
+func (gl *GameLevel2) ComputeWorldOffsetX(currentWorldOffsetX, deltaTime float32) float32 {
 	if gl.bossEncountered {
 		return currentWorldOffsetX
 	}
@@ -43,11 +43,11 @@ func (gl *gameLevel1) computeWorldOffsetX(currentWorldOffsetX float32, deltaTime
 	return result
 }
 
-func (gl *gameLevel1) worldViewPort() *pb.ViewPort {
+func (gl *GameLevel2) WorldViewPort() *pb.ViewPort {
 	return gl.viewPort
 }
 
-func (gl *gameLevel1) completed() bool {
+func (gl *GameLevel2) Completed() bool {
 	if !gl.bossEncountered || gl.bossHealthIsTicking {
 		return false
 	}
