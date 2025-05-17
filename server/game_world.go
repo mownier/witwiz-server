@@ -24,8 +24,6 @@ type gameWorld struct {
 	gameStateMu         sync.Mutex
 	playerConnections   map[int32]*playerConnection
 	playerConnectionsMu sync.Mutex
-	playerData          map[int32]*playerData
-	playerDataMu        sync.Mutex
 	gameLevel           gl.GameLevel
 	gameLevels          []int32
 	gameLevelMu         sync.Mutex
@@ -36,7 +34,6 @@ func newGameWorld() *gameWorld {
 	return &gameWorld{
 		gameState:         newGameStateUpdate(),
 		playerConnections: make(map[int32]*playerConnection),
-		playerData:        make(map[int32]*playerData),
 		gameLevel:         nil,
 		gameLevels:        gameLevelArrangement(),
 		restarting:        false,
@@ -45,16 +42,14 @@ func newGameWorld() *gameWorld {
 
 func newGameStateUpdate() *pb.GameStateUpdate {
 	return &pb.GameStateUpdate{
-		Players:       []*pb.PlayerState{},
-		Projectiles:   []*pb.ProjectileState{},
-		CharacterIds:  []int32{1, 2, 3, 4, 5},
-		WorldViewPort: &pb.ViewPort{Width: 0, Height: 0},
-		WorldOffset:   &pb.Vector2{X: 0, Y: 0},
-		LevelId:       0,
-		GameStarted:   false,
-		GameOver:      false,
-		GamePaused:    false,
-		IsInitial:     false,
+		Players:              []*pb.PlayerState{},
+		CharacterIds:         []int32{1, 2, 3, 4, 5},
+		PlayerViewPortBounds: &pb.ViewPortBounds{MinX: 0, MinY: 0, MaxX: 0, MaxY: 0},
+		LevelId:              0,
+		GameStarted:          false,
+		GameOver:             false,
+		GamePaused:           false,
+		IsInitial:            false,
 	}
 }
 
@@ -67,7 +62,6 @@ func newPlayerState(playerId int32) *pb.PlayerState {
 		Velocity:       &pb.Vector2{X: 0, Y: 0},
 		Acceleration:   &pb.Vector2{X: 0, Y: 0},
 		TargetVelocity: &pb.Vector2{X: 0, Y: 0},
-		BoundingBox:    &pb.BoundingBox{Width: 32, Height: 32},
 	}
 }
 
@@ -76,25 +70,25 @@ func gameLevelArrangement() []int32 {
 }
 
 func (gw *gameWorld) changeLevel(levelId int32) {
-	levelChanged := false
+	var levelViewPortBounds *pb.ViewPortBounds
 
 	gw.gameLevelMu.Lock()
 
 	switch levelId {
 	case 1:
-		gw.gameLevel = gl.NewGameLevel1()
-		levelChanged = true
+		level := gl.NewGameLevel1()
+		levelViewPortBounds = level.ViewPortBounds()
+		gw.gameLevel = level
 
 	case 2:
-		gw.gameLevel = gl.NewGameLevel2()
-		levelChanged = true
+		level := gl.NewGameLevel2()
+		levelViewPortBounds = level.ViewPortBounds()
+		gw.gameLevel = level
 	}
-
-	worldViewPort := gw.gameLevel.WorldViewPort()
 
 	gw.gameLevelMu.Unlock()
 
-	if !levelChanged {
+	if levelViewPortBounds == nil {
 		return
 	}
 
@@ -104,10 +98,8 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 		player.Position.X = 0
 		player.Position.Y = 0
 	}
-	gw.gameState.Projectiles = []*pb.ProjectileState{}
-	gw.gameState.WorldOffset = &pb.Vector2{X: 0, Y: 0}
 	gw.gameState.LevelId = levelId
-	gw.gameState.WorldViewPort = worldViewPort
+	gw.gameState.PlayerViewPortBounds = &pb.ViewPortBounds{MinX: 0, MinY: 0, MaxX: 0, MaxY: 0}
 
 	gw.gameStateMu.Unlock()
 }
@@ -120,10 +112,6 @@ func (gw *gameWorld) addPlayer(player *pb.PlayerState, stream pb.WitWiz_JoinGame
 	gw.playerConnectionsMu.Lock()
 	gw.playerConnections[player.PlayerId] = &playerConnection{playerId: player.PlayerId, stream: stream}
 	gw.playerConnectionsMu.Unlock()
-
-	gw.playerDataMu.Lock()
-	gw.playerData[player.PlayerId] = &playerData{viewPort: &pb.ViewPort{Width: 0, Height: 0}}
-	gw.playerDataMu.Unlock()
 
 	log.Printf("player %d joined the game world\n", player.PlayerId)
 }
@@ -145,10 +133,6 @@ func (gw *gameWorld) removePlayer(playerId int32) {
 	gw.playerConnectionsMu.Lock()
 	delete(gw.playerConnections, playerId)
 	gw.playerConnectionsMu.Unlock()
-
-	gw.playerDataMu.Lock()
-	delete(gw.playerData, playerId)
-	gw.playerDataMu.Unlock()
 
 	log.Printf("player %d left the game world\n", playerId)
 }
@@ -172,13 +156,6 @@ func (gw *gameWorld) processInput(input *pb.PlayerInput) error {
 	case pb.PlayerInput_SELECT_CHARACTER:
 		player.CharacterId = input.CharacterId
 		gw.gameState.GameStarted = true
-
-	case pb.PlayerInput_REPORT_VIEWPORT:
-		gw.playerDataMu.Lock()
-		if playerData, exists := gw.playerData[player.PlayerId]; exists {
-			playerData.viewPort = input.ViewPort
-		}
-		gw.playerDataMu.Unlock()
 	}
 
 	if !gw.gameState.GameStarted {
@@ -301,8 +278,6 @@ func (gw *gameWorld) runGameLoop() {
 		}
 		gw.gameLevelMu.Unlock()
 
-		worldShouldMove := false
-
 		for _, player := range gw.gameState.Players {
 			// Check if player has selected a character
 			var didSelectCharacter bool = false
@@ -316,8 +291,6 @@ func (gw *gameWorld) runGameLoop() {
 				// Do nothing since player has not yet selected a character
 				continue
 			}
-
-			worldShouldMove = true
 
 			// Apply acceleration
 			player.Velocity.X += player.Acceleration.X * deltaTime
@@ -370,38 +343,25 @@ func (gw *gameWorld) runGameLoop() {
 			player.Position.X += player.Velocity.X * deltaTime
 			player.Position.Y += player.Velocity.Y * deltaTime
 
-			// **Boundary Checks (Keep position >= 0)**
-			if player.Position.X < 0 {
-				player.Position.X = 0
+			// Bounds check
+			gw.gameLevelMu.Lock()
+			viewPortBounds := gw.gameLevel.ViewPortBounds()
+			gw.gameLevelMu.Unlock()
+
+			if player.Position.X < viewPortBounds.MinX {
+				player.Position.X = viewPortBounds.MinX
+				player.Velocity.X = 0
+			} else if player.Position.X > viewPortBounds.MaxX {
+				player.Position.X = viewPortBounds.MaxX
 				player.Velocity.X = 0
 			}
-			if player.Position.Y < 0 {
-				player.Position.Y = 0
+
+			if player.Position.Y < viewPortBounds.MinY {
+				player.Position.Y = viewPortBounds.MinY
 				player.Velocity.Y = 0
+			} else if player.Position.Y > viewPortBounds.MaxY {
+				player.Position.Y = viewPortBounds.MaxY
 			}
-
-			gw.gameLevelMu.Lock()
-			worldViewPort := gw.gameLevel.WorldViewPort()
-			gw.gameLevelMu.Unlock()
-
-			gw.playerDataMu.Lock()
-			if playerData, exist := gw.playerData[player.PlayerId]; exist {
-				if player.Position.X >= (min(playerData.viewPort.Width, worldViewPort.Width) - player.BoundingBox.Width) {
-					player.Position.X = (min(playerData.viewPort.Width, worldViewPort.Width) - player.BoundingBox.Width)
-					player.Velocity.X = 0
-				}
-				if player.Position.Y >= (min(playerData.viewPort.Height, worldViewPort.Height) - player.BoundingBox.Height) {
-					player.Position.Y = (min(playerData.viewPort.Height, worldViewPort.Height) - player.BoundingBox.Height)
-					player.Velocity.Y = 0
-				}
-			}
-			gw.playerDataMu.Unlock()
-		}
-
-		if worldShouldMove {
-			gw.gameLevelMu.Lock()
-			gw.gameState.WorldOffset.X = gw.gameLevel.ComputeWorldOffsetX(gw.gameState.WorldOffset.X, deltaTime)
-			gw.gameLevelMu.Unlock()
 		}
 
 		var gameOver bool = false
