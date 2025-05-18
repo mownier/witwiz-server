@@ -13,10 +13,12 @@ import (
 )
 
 const (
-	playerAcceleration float32 = 800
-	playerDeceleration float32 = 1600
-	playerMaxSpeed     float32 = 1200
-	tickRate                   = time.Millisecond * 50
+	playerAcceleration    float32 = 800
+	playerDeceleration    float32 = 1600
+	playerMaxSpeed        float32 = 1200
+	tickRate                      = time.Millisecond * 50
+	defaultViewPortWidth  float32 = 1080
+	defaultViewPortHeight float32 = 720
 )
 
 type gameWorld struct {
@@ -42,14 +44,19 @@ func newGameWorld() *gameWorld {
 
 func newGameStateUpdate() *pb.GameStateUpdate {
 	return &pb.GameStateUpdate{
-		Players:              []*pb.PlayerState{},
-		CharacterIds:         []int32{1, 2, 3, 4, 5},
-		PlayerViewPortBounds: &pb.ViewPortBounds{MinX: 0, MinY: 0, MaxX: 0, MaxY: 0},
-		LevelId:              0,
-		GameStarted:          false,
-		GameOver:             false,
-		GamePaused:           false,
-		IsInitial:            false,
+		Players:      []*pb.PlayerState{},
+		CharacterIds: []int32{1, 2, 3, 4, 5},
+		LevelId:      0,
+		GameStarted:  false,
+		GameOver:     false,
+		GamePaused:   false,
+		IsInitial:    false,
+		ViewPortBounds: &pb.Bounds{
+			MinX: 0,
+			MinY: 0,
+			MaxX: defaultViewPortWidth,
+			MaxY: defaultViewPortHeight,
+		},
 	}
 }
 
@@ -70,18 +77,18 @@ func gameLevelArrangement() []int32 {
 }
 
 func (gw *gameWorld) changeLevel(levelId int32) {
-	var levelViewPortBounds *pb.ViewPortBounds
+	var levelViewPortBounds *pb.Bounds
 
 	gw.gameLevelMu.Lock()
 
 	switch levelId {
 	case 1:
-		level := gl.NewGameLevel1()
+		level := gl.NewGameLevel1(defaultViewPortWidth, defaultViewPortHeight)
 		levelViewPortBounds = level.ViewPortBounds()
 		gw.gameLevel = level
 
 	case 2:
-		level := gl.NewGameLevel2()
+		level := gl.NewGameLevel2(defaultViewPortWidth, defaultViewPortHeight)
 		levelViewPortBounds = level.ViewPortBounds()
 		gw.gameLevel = level
 	}
@@ -99,7 +106,7 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 		player.Position.Y = 0
 	}
 	gw.gameState.LevelId = levelId
-	gw.gameState.PlayerViewPortBounds = &pb.ViewPortBounds{MinX: 0, MinY: 0, MaxX: 0, MaxY: 0}
+	gw.gameState.ViewPortBounds = levelViewPortBounds
 
 	gw.gameStateMu.Unlock()
 }
@@ -276,7 +283,10 @@ func (gw *gameWorld) runGameLoop() {
 			gw.gameLevelMu.Lock()
 			gw.gameStateMu.Lock()
 		}
+		levelViewPortBounds := gw.gameLevel.ViewPortBounds()
 		gw.gameLevelMu.Unlock()
+
+		shouldUpdateViewPortBounds := false
 
 		for _, player := range gw.gameState.Players {
 			// Check if player has selected a character
@@ -291,6 +301,8 @@ func (gw *gameWorld) runGameLoop() {
 				// Do nothing since player has not yet selected a character
 				continue
 			}
+
+			shouldUpdateViewPortBounds = true
 
 			// Apply acceleration
 			player.Velocity.X += player.Acceleration.X * deltaTime
@@ -344,24 +356,31 @@ func (gw *gameWorld) runGameLoop() {
 			player.Position.Y += player.Velocity.Y * deltaTime
 
 			// Bounds check
+			if player.Position.X <= levelViewPortBounds.MinX {
+				player.Position.X = levelViewPortBounds.MinX
+				player.Velocity.X = 0
+			} else if player.Position.X >= levelViewPortBounds.MaxX {
+				player.Position.X = levelViewPortBounds.MaxX
+				player.Velocity.X = 0
+			}
+
+			if player.Position.Y <= levelViewPortBounds.MinY {
+				player.Position.Y = levelViewPortBounds.MinY
+				player.Velocity.Y = 0
+			} else if player.Position.Y >= levelViewPortBounds.MaxY {
+				player.Position.Y = levelViewPortBounds.MaxY
+				player.Velocity.Y = 0
+			}
+		}
+
+		// Compute player view port bounds
+		if shouldUpdateViewPortBounds {
 			gw.gameLevelMu.Lock()
-			viewPortBounds := gw.gameLevel.ViewPortBounds()
+			gw.gameLevel.UpdateViewPortBounds(deltaTime)
+			updated := gw.gameLevel.ViewPortBounds()
 			gw.gameLevelMu.Unlock()
 
-			if player.Position.X < viewPortBounds.MinX {
-				player.Position.X = viewPortBounds.MinX
-				player.Velocity.X = 0
-			} else if player.Position.X > viewPortBounds.MaxX {
-				player.Position.X = viewPortBounds.MaxX
-				player.Velocity.X = 0
-			}
-
-			if player.Position.Y < viewPortBounds.MinY {
-				player.Position.Y = viewPortBounds.MinY
-				player.Velocity.Y = 0
-			} else if player.Position.Y > viewPortBounds.MaxY {
-				player.Position.Y = viewPortBounds.MaxY
-			}
+			gw.gameState.ViewPortBounds = updated
 		}
 
 		var gameOver bool = false
