@@ -59,15 +59,17 @@ func newGameStateUpdate() *pb.GameStateUpdate {
 }
 
 func newPlayerState(playerId int32) *pb.PlayerState {
+	boundingBox := &pb.Size{Width: 32, Height: 32}
 	return &pb.PlayerState{
 		PlayerId:         playerId,
 		CharacterId:      0,
 		MaxSpeed:         playerMaxSpeed,
-		ViewportPosition: &pb.Point{X: 0, Y: 0},
-		LevelPosition:    &pb.Point{X: 0, Y: 0},
+		ViewportPosition: &pb.Point{X: boundingBox.Width / 2, Y: boundingBox.Height / 2},
+		LevelPosition:    &pb.Point{X: boundingBox.Width / 2, Y: boundingBox.Height / 2},
 		Velocity:         &pb.Vector{X: 0, Y: 0},
 		Acceleration:     &pb.Vector{X: 0, Y: 0},
 		TargetVelocity:   &pb.Vector{X: 0, Y: 0},
+		BoundingBox:      boundingBox,
 	}
 }
 
@@ -359,19 +361,19 @@ func (gw *gameWorld) runGameLoop() {
 			player.ViewportPosition.Y += player.Velocity.Y * deltaTime
 
 			// Bounds check
-			if player.ViewportPosition.X <= viewportBounds.MinX {
-				player.ViewportPosition.X = viewportBounds.MinX
+			if player.ViewportPosition.X <= viewportBounds.MinX+player.BoundingBox.Width/2 {
+				player.ViewportPosition.X = viewportBounds.MinX + player.BoundingBox.Width/2
 				player.Velocity.X = 0
-			} else if player.ViewportPosition.X >= viewportBounds.MaxX {
-				player.ViewportPosition.X = viewportBounds.MaxX
+			} else if player.ViewportPosition.X >= viewportBounds.MaxX-player.BoundingBox.Width/2 {
+				player.ViewportPosition.X = viewportBounds.MaxX - player.BoundingBox.Width/2
 				player.Velocity.X = 0
 			}
 
-			if player.ViewportPosition.Y <= viewportBounds.MinY {
-				player.ViewportPosition.Y = viewportBounds.MinY
+			if player.ViewportPosition.Y <= viewportBounds.MinY+player.BoundingBox.Height/2 {
+				player.ViewportPosition.Y = viewportBounds.MinY + player.BoundingBox.Height/2
 				player.Velocity.Y = 0
-			} else if player.ViewportPosition.Y >= viewportBounds.MaxY {
-				player.ViewportPosition.Y = viewportBounds.MaxY
+			} else if player.ViewportPosition.Y >= viewportBounds.MaxY-player.BoundingBox.Height/2 {
+				player.ViewportPosition.Y = viewportBounds.MaxY - player.BoundingBox.Height/2
 				player.Velocity.Y = 0
 			}
 

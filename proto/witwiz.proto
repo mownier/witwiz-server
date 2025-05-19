@@ -51,6 +51,7 @@ message PlayerState {
     Vector velocity = 6;
     Vector acceleration = 7;
     Vector targetVelocity = 8;
+    Size BoundingBox = 9;
 }
 
 message Size {
