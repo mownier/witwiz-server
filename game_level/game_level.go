@@ -4,13 +4,15 @@ import pb "witwiz/proto"
 
 type GameLevel interface {
 	LevelId() int32
+	LevelSize() *pb.Size
 	LevelBounds() *pb.Bounds
-	ViewPortBounds() *pb.Bounds
-	UpdateViewPortBounds(deltaTime float32)
+	ViewportSize() *pb.Size
+	ViewportBounds() *pb.Bounds
+	UpdateViewportBounds(deltaTime float32)
 	Completed() bool
 }
 
-type viewPort struct {
+type viewport struct {
 	bounds    *pb.Bounds
 	velocity  float32
 	paths     []*path
