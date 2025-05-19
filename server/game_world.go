@@ -57,6 +57,9 @@ func newGameStateUpdate() *pb.GameStateUpdate {
 			MaxX: defaultViewPortWidth,
 			MaxY: defaultViewPortHeight,
 		},
+		LevelBounds: &pb.Bounds{
+			MinX: 0, MinY: 0, MaxX: 0, MaxY: 0,
+		},
 	}
 }
 
@@ -377,10 +380,12 @@ func (gw *gameWorld) runGameLoop() {
 		if shouldUpdateViewPortBounds {
 			gw.gameLevelMu.Lock()
 			gw.gameLevel.UpdateViewPortBounds(deltaTime)
-			updated := gw.gameLevel.ViewPortBounds()
+			updatedViewPortBounds := gw.gameLevel.ViewPortBounds()
+			updatedLevelBounds := gw.gameLevel.LevelBounds()
 			gw.gameLevelMu.Unlock()
 
-			gw.gameState.ViewPortBounds = updated
+			gw.gameState.ViewPortBounds = updatedViewPortBounds
+			gw.gameState.LevelBounds = updatedLevelBounds
 		}
 
 		var gameOver bool = false

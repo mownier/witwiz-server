@@ -12,12 +12,6 @@ type GameLevel1 struct {
 }
 
 func NewGameLevel1(viewPortWidth, viewPortHeight float32) *GameLevel1 {
-	// Note: Make sure scroll destination is within these values:
-	// pathMinY := gl.viewPort.bounds.MaxY // 720
-	// pathMaxY := gl.levelBounds.MaxY     // 1024
-	// pathMinX := gl.viewPort.bounds.MaxX // 1080
-	// pathMaxX := gl.levelBounds.MaxX     // 5120
-	// fmt.Println(pathMinY, pathMaxY, pathMinX, pathMaxX)
 	return &GameLevel1{
 		levelId:     1,
 		levelBounds: &pb.Bounds{MinX: 0, MinY: 0, MaxX: 5120, MaxY: 1024},
@@ -71,20 +65,18 @@ func (gl *GameLevel1) UpdateViewPortBounds(deltaTime float32) {
 		currentPathIndex := gl.viewPort.pathIndex
 		path := gl.viewPort.paths[currentPathIndex]
 		gl.viewPort.speed.X = path.speed * float32(path.direction)
+		levelSpeed := float32(200) * float32(path.direction*-1)
 
 		if gl.viewPort.speed.X > 0 { // Scrolling to the right
 			if gl.viewPort.bounds.MaxX < gl.levelBounds.MaxX {
 				gl.viewPort.bounds.MinX += gl.viewPort.speed.X * deltaTime
 				gl.viewPort.bounds.MaxX += gl.viewPort.speed.X * deltaTime
-				// Optional: Clamp to the exact boundary if needed
-				if gl.viewPort.bounds.MaxX > gl.levelBounds.MaxX {
-					diff := gl.viewPort.bounds.MaxX - gl.levelBounds.MaxX
-					gl.viewPort.bounds.MinX -= diff
-					gl.viewPort.bounds.MaxX = gl.levelBounds.MaxX
-					gl.viewPort.speed.X = 0 // Stop horizontal scrolling
-					gl.viewPort.pathIndex += 1
-				}
+				gl.levelBounds.MinX += levelSpeed * deltaTime
+				gl.levelBounds.MaxX += levelSpeed * deltaTime
 			} else {
+				diff := gl.viewPort.bounds.MaxX - gl.levelBounds.MaxX
+				gl.viewPort.bounds.MinX -= diff
+				gl.viewPort.bounds.MaxX = gl.levelBounds.MaxX
 				gl.viewPort.speed.X = 0 // Stop horizontal scrolling once reached
 				gl.viewPort.pathIndex += 1
 			}
@@ -92,23 +84,13 @@ func (gl *GameLevel1) UpdateViewPortBounds(deltaTime float32) {
 			if gl.viewPort.bounds.MinX > gl.levelBounds.MinX {
 				gl.viewPort.bounds.MinX += gl.viewPort.speed.X * deltaTime
 				gl.viewPort.bounds.MaxX += gl.viewPort.speed.X * deltaTime
-				// Optional: Clamp to the exact boundary
-				if gl.viewPort.bounds.MinX < gl.levelBounds.MinX {
-					diff := gl.levelBounds.MinX - gl.viewPort.bounds.MinX
-					gl.viewPort.bounds.MaxX += diff
-					gl.viewPort.bounds.MinX = gl.levelBounds.MinX
-					gl.viewPort.speed.X = 0 // Stop horizontal scrolling
-					gl.viewPort.pathIndex += 1
-				}
+				gl.levelBounds.MinX += levelSpeed * deltaTime
+				gl.levelBounds.MaxX += levelSpeed * deltaTime
 			} else {
+				diff := gl.levelBounds.MinX - gl.viewPort.bounds.MinX
+				gl.viewPort.bounds.MaxX += diff
+				gl.viewPort.bounds.MinX = gl.levelBounds.MinX
 				gl.viewPort.speed.X = 0 // Stop horizontal scrolling once reached
-				gl.viewPort.pathIndex += 1
-			}
-		}
-		if currentPathIndex == gl.viewPort.pathIndex {
-			if (path.direction == DIRECTION_POSITIVE && gl.viewPort.bounds.MaxX >= path.destination) ||
-				(path.direction == DIRECTION_NEGATIVE && gl.viewPort.bounds.MaxX <= path.destination) {
-				gl.viewPort.speed.X = 0
 				gl.viewPort.pathIndex += 1
 			}
 		}
@@ -118,20 +100,18 @@ func (gl *GameLevel1) UpdateViewPortBounds(deltaTime float32) {
 		currentPathIndex := gl.viewPort.pathIndex
 		path := gl.viewPort.paths[currentPathIndex]
 		gl.viewPort.speed.Y = path.speed * float32(path.direction)
+		levelSpeed := float32(500) * float32(path.direction*-1)
 
 		if gl.viewPort.speed.Y > 0 { // Scrolling down
 			if gl.viewPort.bounds.MaxY < gl.levelBounds.MaxY {
 				gl.viewPort.bounds.MinY += gl.viewPort.speed.Y * deltaTime
 				gl.viewPort.bounds.MaxY += gl.viewPort.speed.Y * deltaTime
-				// Optional clamping
-				if gl.viewPort.bounds.MaxY > gl.levelBounds.MaxY {
-					diff := gl.viewPort.bounds.MaxY - gl.levelBounds.MaxY
-					gl.viewPort.bounds.MinY -= diff
-					gl.viewPort.bounds.MaxY = gl.levelBounds.MaxY
-					gl.viewPort.speed.Y = 0
-					gl.viewPort.pathIndex += 1
-				}
+				gl.levelBounds.MinY += levelSpeed * deltaTime
+				gl.levelBounds.MaxY += levelSpeed * deltaTime
 			} else {
+				diff := gl.viewPort.bounds.MaxY - gl.levelBounds.MaxY
+				gl.viewPort.bounds.MinY -= diff
+				gl.viewPort.bounds.MaxY = gl.levelBounds.MaxY
 				gl.viewPort.speed.Y = 0
 				gl.viewPort.pathIndex += 1
 			}
@@ -139,22 +119,12 @@ func (gl *GameLevel1) UpdateViewPortBounds(deltaTime float32) {
 			if gl.viewPort.bounds.MinY > gl.levelBounds.MinY {
 				gl.viewPort.bounds.MinY += gl.viewPort.speed.Y * deltaTime
 				gl.viewPort.bounds.MaxY += gl.viewPort.speed.Y * deltaTime
-				// Optional clamping
-				if gl.viewPort.bounds.MinY < gl.levelBounds.MinY {
-					diff := gl.levelBounds.MinY - gl.viewPort.bounds.MinY
-					gl.viewPort.bounds.MaxY += diff
-					gl.viewPort.bounds.MinY = gl.levelBounds.MinY
-					gl.viewPort.speed.Y = 0
-					gl.viewPort.pathIndex += 1
-				}
+				gl.levelBounds.MinY += levelSpeed * deltaTime
+				gl.levelBounds.MaxY += levelSpeed * deltaTime
 			} else {
-				gl.viewPort.speed.Y = 0
-				gl.viewPort.pathIndex += 1
-			}
-		}
-		if currentPathIndex == gl.viewPort.pathIndex {
-			if (path.direction == DIRECTION_POSITIVE && gl.viewPort.bounds.MaxY >= path.destination) ||
-				(path.direction == DIRECTION_NEGATIVE && gl.viewPort.bounds.MaxY <= path.destination) {
+				diff := gl.levelBounds.MinY - gl.viewPort.bounds.MinY
+				gl.viewPort.bounds.MaxY += diff
+				gl.viewPort.bounds.MinY = gl.levelBounds.MinY
 				gl.viewPort.speed.Y = 0
 				gl.viewPort.pathIndex += 1
 			}

@@ -37,6 +37,7 @@ message GameStateUpdate {
     Bounds view_port_bounds = 6;
     repeated int32 character_ids = 7;
     repeated PlayerState players = 8;
+    Bounds level_bounds = 9;
 }
 
 message PlayerState {
