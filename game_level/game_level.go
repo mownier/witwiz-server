@@ -9,7 +9,7 @@ type GameLevel interface {
 	ViewportSize() *pb.Size
 	ViewportBounds() *pb.Bounds
 	UpdateViewportBounds(deltaTime float32)
-	Completed() bool
+	NextLevelPortal() *pb.NextLevelPortalState
 }
 
 type viewport struct {

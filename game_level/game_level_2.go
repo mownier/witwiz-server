@@ -5,14 +5,15 @@ import (
 )
 
 type GameLevel2 struct {
-	levelId       int32
-	levelSize     *pb.Size
-	levelBounds   *pb.Bounds
-	levelSpeed    float32
-	levelVelocity float32
-	viewport      *viewport
-	viewportSize  *pb.Size
-	completed     bool
+	levelId         int32
+	levelSize       *pb.Size
+	levelBounds     *pb.Bounds
+	levelSpeed      float32
+	levelVelocity   float32
+	viewport        *viewport
+	viewportSize    *pb.Size
+	completed       bool
+	nextLevelPortal *pb.NextLevelPortalState
 }
 
 func NewGameLevel2(viewportSize *pb.Size) *GameLevel2 {
@@ -21,16 +22,16 @@ func NewGameLevel2(viewportSize *pb.Size) *GameLevel2 {
 		levelId:       1,
 		levelBounds:   &pb.Bounds{MinX: 0, MinY: 0, MaxX: levelSize.Width, MaxY: levelSize.Height},
 		levelSize:     levelSize,
-		levelSpeed:    50,
+		levelSpeed:    200,
 		levelVelocity: 0,
 		viewport: &viewport{
 			bounds:   &pb.Bounds{MinX: 0, MinY: 0, MaxX: viewportSize.Width, MaxY: viewportSize.Height},
 			velocity: 0,
 			paths: []*path{
 				{scroll: SCROLL_VERTICALLY, speed: 20, direction: DIRECTION_POSITIVE},
-				// {scroll: SCROLL_HORIZONTALLY, speed: 20, direction: DIRECTION_POSITIVE},
+				{scroll: SCROLL_HORIZONTALLY, speed: 20, direction: DIRECTION_POSITIVE},
 				{scroll: SCROLL_VERTICALLY, speed: 20, direction: DIRECTION_NEGATIVE},
-				// {scroll: SCROLL_HORIZONTALLY, speed: 20, direction: DIRECTION_NEGATIVE},
+				{scroll: SCROLL_HORIZONTALLY, speed: 20, direction: DIRECTION_NEGATIVE},
 			},
 			pathIndex: 0,
 		},
@@ -68,6 +69,16 @@ func (gl *GameLevel2) UpdateViewportBounds(deltaTime float32) {
 		// TODO: No path to process. What's next?
 		gl.viewport.velocity = 0
 		gl.levelVelocity = 0
+		if gl.nextLevelPortal == nil {
+			boundingBox := &pb.Size{Width: 100, Height: gl.viewportSize.Height}
+			gl.nextLevelPortal = &pb.NextLevelPortalState{
+				BoundingBox: boundingBox,
+				Position: &pb.Point{
+					X: gl.viewportSize.Width - boundingBox.Width/2,
+					Y: boundingBox.Height / 2,
+				},
+			}
+		}
 		return
 	}
 
@@ -140,6 +151,6 @@ func (gl *GameLevel2) UpdateViewportBounds(deltaTime float32) {
 	}
 }
 
-func (gl *GameLevel2) Completed() bool {
-	return gl.completed
+func (gl *GameLevel2) NextLevelPortal() *pb.NextLevelPortalState {
+	return gl.nextLevelPortal
 }

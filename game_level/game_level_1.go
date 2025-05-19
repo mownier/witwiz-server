@@ -5,14 +5,15 @@ import (
 )
 
 type GameLevel1 struct {
-	levelId       int32
-	levelSize     *pb.Size
-	levelBounds   *pb.Bounds
-	levelSpeed    float32
-	levelVelocity float32
-	viewport      *viewport
-	viewportSize  *pb.Size
-	completed     bool
+	levelId         int32
+	levelSize       *pb.Size
+	levelBounds     *pb.Bounds
+	levelSpeed      float32
+	levelVelocity   float32
+	viewport        *viewport
+	viewportSize    *pb.Size
+	completed       bool
+	nextLevelPortal *pb.NextLevelPortalState
 }
 
 func NewGameLevel1(viewportSize *pb.Size) *GameLevel1 {
@@ -28,9 +29,9 @@ func NewGameLevel1(viewportSize *pb.Size) *GameLevel1 {
 			velocity: 0,
 			paths: []*path{
 				{scroll: SCROLL_VERTICALLY, speed: 20, direction: DIRECTION_POSITIVE},
-				{scroll: SCROLL_HORIZONTALLY, speed: 20, direction: DIRECTION_POSITIVE},
+				// {scroll: SCROLL_HORIZONTALLY, speed: 20, direction: DIRECTION_POSITIVE},
 				{scroll: SCROLL_VERTICALLY, speed: 20, direction: DIRECTION_NEGATIVE},
-				{scroll: SCROLL_HORIZONTALLY, speed: 20, direction: DIRECTION_NEGATIVE},
+				// {scroll: SCROLL_HORIZONTALLY, speed: 20, direction: DIRECTION_NEGATIVE},
 			},
 			pathIndex: 0,
 		},
@@ -68,6 +69,16 @@ func (gl *GameLevel1) UpdateViewportBounds(deltaTime float32) {
 		// TODO: No path to process. What's next?
 		gl.viewport.velocity = 0
 		gl.levelVelocity = 0
+		if gl.nextLevelPortal == nil {
+			boundingBox := &pb.Size{Width: 100, Height: gl.viewportSize.Height}
+			gl.nextLevelPortal = &pb.NextLevelPortalState{
+				BoundingBox: boundingBox,
+				Position: &pb.Point{
+					X: gl.viewportSize.Width - boundingBox.Width/2,
+					Y: boundingBox.Height / 2,
+				},
+			}
+		}
 		return
 	}
 
@@ -140,6 +151,6 @@ func (gl *GameLevel1) UpdateViewportBounds(deltaTime float32) {
 	}
 }
 
-func (gl *GameLevel1) Completed() bool {
-	return gl.completed
+func (gl *GameLevel1) NextLevelPortal() *pb.NextLevelPortalState {
+	return gl.nextLevelPortal
 }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -289,8 +290,11 @@ func (gw *gameWorld) runGameLoop() {
 		}
 		viewportBounds := gw.gameLevel.ViewportBounds()
 		levelBounds := gw.gameLevel.LevelBounds()
+		nextLevelPortal := gw.gameLevel.NextLevelPortal()
 		gw.gameLevelMu.Unlock()
 
+		gameOver := false
+		nextLevelId := int32(-1)
 		shouldUpdateViewPortBounds := false
 
 		for _, player := range gw.gameState.Players {
@@ -379,6 +383,34 @@ func (gw *gameWorld) runGameLoop() {
 
 			player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
 			player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
+
+			// Check Next Level Portal
+			if nextLevelPortal != nil {
+				gw.gameState.NextLevelPortal = nextLevelPortal
+				bounds1 := &pb.Bounds{
+					MinX: player.LevelPosition.X - player.BoundingBox.Width/2,
+					MaxX: player.LevelPosition.X + player.BoundingBox.Width/2,
+					MinY: player.LevelPosition.Y - player.BoundingBox.Height/2,
+					MaxY: player.LevelPosition.Y + player.BoundingBox.Height/2,
+				}
+				bounds2 := &pb.Bounds{
+					MinX: nextLevelPortal.Position.X - nextLevelPortal.BoundingBox.Width/2,
+					MaxX: nextLevelPortal.Position.X + nextLevelPortal.BoundingBox.Width/2,
+					MinY: nextLevelPortal.Position.Y - nextLevelPortal.BoundingBox.Height/2,
+					MaxY: nextLevelPortal.Position.Y + nextLevelPortal.BoundingBox.Height/2,
+				}
+				collided := checkCollision(bounds1, bounds2)
+				if collided {
+					if len(gw.gameLevels) == 0 {
+						gameOver = true
+					} else {
+						nextLevelId = gw.gameLevels[0]
+						gw.gameLevelMu.Lock()
+						gw.gameLevels = DeleteElementOrdered(gw.gameLevels, 0)
+						gw.gameLevelMu.Unlock()
+					}
+				}
+			}
 		}
 
 		// Compute player view port bounds
@@ -393,23 +425,10 @@ func (gw *gameWorld) runGameLoop() {
 			gw.gameState.LevelBounds = updatedLevelBounds
 		}
 
-		var gameOver bool = false
-		var nextLevelId int32 = -1
-
-		gw.gameLevelMu.Lock()
-		if gw.gameLevel.Completed() {
-			if len(gw.gameLevels) == 0 {
-				gameOver = true
-			} else {
-				nextLevelId = gw.gameLevels[0]
-				gw.gameLevels = DeleteElementOrdered(gw.gameLevels, 0)
-			}
-		}
-		gw.gameLevelMu.Unlock()
-
 		if gameOver {
 			gw.gameState.GameOver = true
-		} else {
+		} else if nextLevelId != -1 {
+			gw.gameState.NextLevelPortal = nil
 			gw.gameStateMu.Unlock()
 			gw.changeLevel(nextLevelId)
 			gw.gameStateMu.Lock()
@@ -446,4 +465,19 @@ func (gw *gameWorld) sendGameStateUpdates() {
 	for _, pId := range playersToRemove {
 		gw.removePlayer(pId)
 	}
+}
+
+func checkCollision(bounds1, bounds2 *pb.Bounds) bool {
+	// Check for x-axis overlap
+	xOverlap := bounds1.MaxX > bounds2.MinX && bounds1.MinX < bounds2.MaxX
+
+	// Check for y-axis overlap
+	yOverlap := bounds1.MaxY > bounds2.MinY && bounds1.MinY < bounds2.MaxY
+
+	// Collision occurs if there is overlap on both axes
+	collided := xOverlap && yOverlap
+
+	fmt.Println("bounds 1", bounds1, ", bounds 2", bounds2, ", collided", collided, ", xOL", xOverlap, ", yOL", yOverlap)
+
+	return collided
 }
