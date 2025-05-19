@@ -6,23 +6,21 @@ type GameLevel interface {
 	LevelId() int32
 	LevelBounds() *pb.Bounds
 	ViewPortBounds() *pb.Bounds
-	ViewPortPathSpeed() float32
 	UpdateViewPortBounds(deltaTime float32)
 	Completed() bool
 }
 
 type viewPort struct {
 	bounds    *pb.Bounds
-	speed     *pb.Vector2
+	velocity  float32
 	paths     []*path
 	pathIndex int
 }
 
 type path struct {
-	scroll      scroll
-	speed       float32
-	direction   direction
-	destination float32
+	scroll    scroll
+	speed     float32
+	direction direction
 }
 
 type scroll int8
