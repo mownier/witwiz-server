@@ -48,6 +48,13 @@ func (gl *GameLevel2) ViewPortBounds() *pb.Bounds {
 	return gl.viewPort.bounds
 }
 
+func (gl *GameLevel2) ViewPortPathSpeed() float32 {
+	if gl.viewPort.pathIndex >= len(gl.viewPort.paths) {
+		return 0
+	}
+	return gl.viewPort.paths[gl.viewPort.pathIndex].speed
+}
+
 func (gl *GameLevel2) UpdateViewPortBounds(deltaTime float32) {
 	if len(gl.viewPort.paths) == 0 {
 		return

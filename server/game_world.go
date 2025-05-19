@@ -283,7 +283,7 @@ func (gw *gameWorld) runGameLoop() {
 			gw.gameLevelMu.Lock()
 			gw.gameStateMu.Lock()
 		}
-		levelViewPortBounds := gw.gameLevel.ViewPortBounds()
+		boundsToUse := gw.gameLevel.ViewPortBounds()
 		gw.gameLevelMu.Unlock()
 
 		shouldUpdateViewPortBounds := false
@@ -356,19 +356,19 @@ func (gw *gameWorld) runGameLoop() {
 			player.Position.Y += player.Velocity.Y * deltaTime
 
 			// Bounds check
-			if player.Position.X <= levelViewPortBounds.MinX {
-				player.Position.X = levelViewPortBounds.MinX
+			if player.Position.X <= boundsToUse.MinX {
+				player.Position.X = boundsToUse.MinX
 				player.Velocity.X = 0
-			} else if player.Position.X >= levelViewPortBounds.MaxX {
-				player.Position.X = levelViewPortBounds.MaxX
+			} else if player.Position.X >= boundsToUse.MaxX {
+				player.Position.X = boundsToUse.MaxX
 				player.Velocity.X = 0
 			}
 
-			if player.Position.Y <= levelViewPortBounds.MinY {
-				player.Position.Y = levelViewPortBounds.MinY
+			if player.Position.Y <= boundsToUse.MinY {
+				player.Position.Y = boundsToUse.MinY
 				player.Velocity.Y = 0
-			} else if player.Position.Y >= levelViewPortBounds.MaxY {
-				player.Position.Y = levelViewPortBounds.MaxY
+			} else if player.Position.Y >= boundsToUse.MaxY {
+				player.Position.Y = boundsToUse.MaxY
 				player.Velocity.Y = 0
 			}
 		}

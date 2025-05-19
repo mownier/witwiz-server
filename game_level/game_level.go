@@ -6,6 +6,7 @@ type GameLevel interface {
 	LevelId() int32
 	LevelBounds() *pb.Bounds
 	ViewPortBounds() *pb.Bounds
+	ViewPortPathSpeed() float32
 	UpdateViewPortBounds(deltaTime float32)
 	Completed() bool
 }

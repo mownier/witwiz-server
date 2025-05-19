@@ -26,7 +26,7 @@ func NewGameLevel1(viewPortWidth, viewPortHeight float32) *GameLevel1 {
 			speed:  &pb.Vector2{X: 0, Y: 0},
 			paths: []*path{
 				{scroll: SCROLL_VERTICALLY, destination: 1024, speed: 20, direction: DIRECTION_POSITIVE},
-				{scroll: SCROLL_HORIZONTALLY, destination: 1400, speed: 20, direction: DIRECTION_POSITIVE},
+				{scroll: SCROLL_HORIZONTALLY, destination: 5120, speed: 20, direction: DIRECTION_POSITIVE},
 				{scroll: SCROLL_VERTICALLY, destination: 720, speed: 20, direction: DIRECTION_NEGATIVE},
 				{scroll: SCROLL_HORIZONTALLY, destination: 1080, speed: 20, direction: DIRECTION_NEGATIVE},
 			},
@@ -46,6 +46,13 @@ func (gl *GameLevel1) LevelBounds() *pb.Bounds {
 
 func (gl *GameLevel1) ViewPortBounds() *pb.Bounds {
 	return gl.viewPort.bounds
+}
+
+func (gl *GameLevel1) ViewPortPathSpeed() float32 {
+	if gl.viewPort.pathIndex >= len(gl.viewPort.paths) {
+		return 0
+	}
+	return gl.viewPort.paths[gl.viewPort.pathIndex].speed
 }
 
 func (gl *GameLevel1) UpdateViewPortBounds(deltaTime float32) {
