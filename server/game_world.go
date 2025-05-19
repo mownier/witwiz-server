@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -476,8 +475,6 @@ func checkCollision(bounds1, bounds2 *pb.Bounds) bool {
 
 	// Collision occurs if there is overlap on both axes
 	collided := xOverlap && yOverlap
-
-	fmt.Println("bounds 1", bounds1, ", bounds 2", bounds2, ", collided", collided, ", xOL", xOverlap, ", yOL", yOverlap)
 
 	return collided
 }
