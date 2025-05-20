@@ -10,6 +10,7 @@ type GameLevel interface {
 	ViewportBounds() *pb.Bounds
 	UpdateViewportBounds(deltaTime float32)
 	NextLevelPortal() *pb.NextLevelPortalState
+	LevelObstacles() []*pb.ObstacleState
 }
 
 type viewport struct {

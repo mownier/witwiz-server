@@ -14,6 +14,7 @@ type GameLevel1 struct {
 	viewportSize    *pb.Size
 	completed       bool
 	nextLevelPortal *pb.NextLevelPortalState
+	obstacles       []*pb.ObstacleState
 }
 
 func NewGameLevel1(viewportSize *pb.Size) *GameLevel1 {
@@ -37,6 +38,7 @@ func NewGameLevel1(viewportSize *pb.Size) *GameLevel1 {
 		},
 		viewportSize: viewportSize,
 		completed:    false,
+		obstacles:    []*pb.ObstacleState{},
 	}
 }
 
@@ -78,6 +80,12 @@ func (gl *GameLevel1) UpdateViewportBounds(deltaTime float32) {
 					Y: boundingBox.Height / 2,
 				},
 			}
+			obstacle := &pb.ObstacleState{
+				ObstacleId:  1,
+				BoundingBox: &pb.Size{Width: 200, Height: 200},
+				Position:    &pb.Point{X: 400, Y: 400},
+			}
+			gl.obstacles = append(gl.obstacles, obstacle)
 		}
 		return
 	}
@@ -153,4 +161,8 @@ func (gl *GameLevel1) UpdateViewportBounds(deltaTime float32) {
 
 func (gl *GameLevel1) NextLevelPortal() *pb.NextLevelPortalState {
 	return gl.nextLevelPortal
+}
+
+func (gl *GameLevel1) LevelObstacles() []*pb.ObstacleState {
+	return gl.obstacles
 }

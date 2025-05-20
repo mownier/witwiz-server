@@ -111,6 +111,7 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 	gw.gameState.ViewportSize = level.ViewportSize()
 	gw.gameState.LevelBounds = level.LevelBounds()
 	gw.gameState.ViewportBounds = level.ViewportBounds()
+	gw.gameState.Obstacles = level.LevelObstacles()
 
 	gw.gameStateMu.Unlock()
 }
@@ -290,6 +291,7 @@ func (gw *gameWorld) runGameLoop() {
 		viewportBounds := gw.gameLevel.ViewportBounds()
 		levelBounds := gw.gameLevel.LevelBounds()
 		nextLevelPortal := gw.gameLevel.NextLevelPortal()
+		gw.gameState.Obstacles = gw.gameLevel.LevelObstacles()
 		gw.gameLevelMu.Unlock()
 
 		gameOver := false
@@ -360,28 +362,104 @@ func (gw *gameWorld) runGameLoop() {
 			}
 
 			// Update position
-			player.ViewportPosition.X += player.Velocity.X * deltaTime
-			player.ViewportPosition.Y += player.Velocity.Y * deltaTime
+			potentialViewportPosX := player.ViewportPosition.X + player.Velocity.X*deltaTime
+			potentialLevelPosX := potentialViewportPosX - levelBounds.MinX
+			potentialViewportPosY := player.ViewportPosition.Y + player.Velocity.Y*deltaTime
+			potentialLevelPosY := potentialViewportPosY - levelBounds.MinY
+
+			// 1. Resolve X-axis movement
+			playerBoundsAtPotentialX := &pb.Bounds{
+				MinX: potentialLevelPosX - player.BoundingBox.Width/2,
+				MaxX: potentialLevelPosX + player.BoundingBox.Width/2,
+				MinY: player.LevelPosition.Y - player.BoundingBox.Height/2,
+				MaxY: player.LevelPosition.Y + player.BoundingBox.Height/2,
+			}
+
+			for _, obstacle := range gw.gameState.Obstacles {
+				obstacleBounds := &pb.Bounds{
+					MinX: obstacle.Position.X - obstacle.BoundingBox.Width/2,
+					MaxX: obstacle.Position.X + obstacle.BoundingBox.Width/2,
+					MinY: obstacle.Position.Y - obstacle.BoundingBox.Height/2,
+					MaxY: obstacle.Position.Y + obstacle.BoundingBox.Height/2,
+				}
+				if checkCollision(playerBoundsAtPotentialX, obstacleBounds) {
+					// Collision on X-axis detected.
+					// Determine which side the player hit and clamp their position.
+					if player.Velocity.X > 0 { // Moving right, hit obstacle's left side
+						player.ViewportPosition.X = obstacleBounds.MinX - player.BoundingBox.Width/2 + viewportBounds.MinX
+						player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
+					} else if player.Velocity.X < 0 { // Moving left, hit obstacle's right side
+						player.ViewportPosition.X = obstacleBounds.MaxX + player.BoundingBox.Width/2 + viewportBounds.MinX
+						player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
+					}
+					player.Velocity.X = 0 // Stop horizontal movement
+					// No need to check other obstacles on this axis if we clamped.
+					// If you have multiple obstacles very close, you might need to iterate further
+					// or resolve based on the closest collision. For simplicity, we break.
+					break
+				}
+			}
+			// If no X-collision, update X position
+			if player.Velocity.X != 0 { // Only update if not stopped by collision
+				player.ViewportPosition.X = potentialViewportPosX
+				player.LevelPosition.X = potentialLevelPosX
+			}
+
+			// 2. Resolve Y-axis movement
+			// Assume player attempts to move vertically (after potential X correction)
+			playerBoundsAtPotentialY := &pb.Bounds{
+				MinX: player.LevelPosition.X - player.BoundingBox.Width/2,
+				MaxX: player.LevelPosition.X + player.BoundingBox.Width/2,
+				MinY: potentialLevelPosY - player.BoundingBox.Height/2,
+				MaxY: potentialLevelPosY + player.BoundingBox.Height/2,
+			}
+			for _, obstacle := range gw.gameState.Obstacles {
+				obstacleBounds := &pb.Bounds{
+					MinX: obstacle.Position.X - obstacle.BoundingBox.Width/2,
+					MaxX: obstacle.Position.X + obstacle.BoundingBox.Width/2,
+					MinY: obstacle.Position.Y - obstacle.BoundingBox.Height/2,
+					MaxY: obstacle.Position.Y + obstacle.BoundingBox.Height/2,
+				}
+				if checkCollision(playerBoundsAtPotentialY, obstacleBounds) {
+					// Collision on Y-axis detected.
+					// Determine which side the player hit and clamp their position.
+					if player.Velocity.Y > 0 { // Moving up, hit obstacle's bottom side
+						player.ViewportPosition.Y = obstacleBounds.MinY - player.BoundingBox.Height/2 + viewportBounds.MinY
+						player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
+					} else if player.Velocity.Y < 0 { // Moving down, hit obstacle's top side
+						player.ViewportPosition.Y = obstacleBounds.MaxY + player.BoundingBox.Height/2 + viewportBounds.MinY
+						player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
+					}
+					player.Velocity.Y = 0 // Stop vertical movement
+					break
+				}
+			}
+			// If no Y-collision, update Y position
+			if player.Velocity.Y != 0 { // Only update if not stopped by collision
+				player.ViewportPosition.Y = potentialViewportPosY
+				player.LevelPosition.Y = potentialLevelPosY
+			}
 
 			// Bounds check
 			if player.ViewportPosition.X <= viewportBounds.MinX+player.BoundingBox.Width/2 {
 				player.ViewportPosition.X = viewportBounds.MinX + player.BoundingBox.Width/2
+				player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
 				player.Velocity.X = 0
 			} else if player.ViewportPosition.X >= viewportBounds.MaxX-player.BoundingBox.Width/2 {
 				player.ViewportPosition.X = viewportBounds.MaxX - player.BoundingBox.Width/2
+				player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
 				player.Velocity.X = 0
 			}
 
 			if player.ViewportPosition.Y <= viewportBounds.MinY+player.BoundingBox.Height/2 {
 				player.ViewportPosition.Y = viewportBounds.MinY + player.BoundingBox.Height/2
+				player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
 				player.Velocity.Y = 0
 			} else if player.ViewportPosition.Y >= viewportBounds.MaxY-player.BoundingBox.Height/2 {
 				player.ViewportPosition.Y = viewportBounds.MaxY - player.BoundingBox.Height/2
+				player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
 				player.Velocity.Y = 0
 			}
-
-			player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
-			player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
 
 			// Check Next Level Portal
 			if nextLevelPortal != nil {
