@@ -166,3 +166,18 @@ func (gl *GameLevel2) NextLevelPortal() *pb.NextLevelPortalState {
 func (gl *GameLevel2) LevelObstacles() []*pb.ObstacleState {
 	return gl.obstacles
 }
+
+func (gl *GameLevel2) LevelVelocity() *pb.Vector {
+	if len(gl.viewport.paths) == 0 ||
+		gl.viewport.pathIndex >= len(gl.viewport.paths) {
+		return &pb.Vector{X: 0, Y: 0}
+	}
+	path := gl.viewport.paths[gl.viewport.pathIndex]
+	switch path.scroll {
+	case SCROLL_HORIZONTALLY:
+		return &pb.Vector{X: gl.levelVelocity, Y: 0}
+	case SCROLL_VERTICALLY:
+		return &pb.Vector{X: 0, Y: gl.levelVelocity}
+	}
+	return &pb.Vector{X: 0, Y: 0}
+}

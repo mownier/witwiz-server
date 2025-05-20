@@ -6,6 +6,7 @@ type GameLevel interface {
 	LevelId() int32
 	LevelSize() *pb.Size
 	LevelBounds() *pb.Bounds
+	LevelVelocity() *pb.Vector
 	ViewportSize() *pb.Size
 	ViewportBounds() *pb.Bounds
 	UpdateViewportBounds(deltaTime float32)
