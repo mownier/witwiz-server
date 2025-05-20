@@ -19,7 +19,6 @@ const (
 	tickRate                      = time.Millisecond * 50
 	defaultViewportWidth  float32 = 1080
 	defaultViewportHeight float32 = 720
-	collisionMargin       float32 = 1
 )
 
 type gameWorld struct {
@@ -387,10 +386,14 @@ func (gw *gameWorld) runGameLoop() {
 					// Collision on X-axis detected.
 					// Determine which side the player hit and clamp their position.
 					if player.Velocity.X > 0 { // Moving right, hit obstacle's left side
-						player.ViewportPosition.X = obstacleBounds.MinX - player.BoundingBox.Width/2 - collisionMargin
+						// viewportBoundsMinX = objectLevelPositionX + levelBounds.MinX - objectBoundingBoxWidth/2
+						viewportBoundsMinX := obstacle.Position.X + levelBounds.MinX - obstacle.BoundingBox.Width/2
+						player.ViewportPosition.X = viewportBoundsMinX - player.BoundingBox.Width/2
 						player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
 					} else if player.Velocity.X < 0 { // Moving left, hit obstacle's right side
-						player.ViewportPosition.X = obstacleBounds.MaxX + player.BoundingBox.Width/2 + collisionMargin
+						// viewportBoundsMaxX = objectLevelPositionX + levelBounds.MinX + objectBoundingBoxWidth/2
+						viewportBoundsMaxX := obstacle.Position.X + levelBounds.MinX + obstacle.BoundingBox.Width/2
+						player.ViewportPosition.X = viewportBoundsMaxX + player.BoundingBox.Width/2
 						player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
 					}
 					player.Velocity.X = 0 // Stop horizontal movement
@@ -425,10 +428,14 @@ func (gw *gameWorld) runGameLoop() {
 					// Collision on Y-axis detected.
 					// Determine which side the player hit and clamp their position.
 					if player.Velocity.Y > 0 { // Moving up, hit obstacle's bottom side
-						player.ViewportPosition.Y = obstacleBounds.MinY - player.BoundingBox.Height/2 - collisionMargin
+						// viewportBoundsMinY = objectLevelPositionY + levelBounds.MinY - objectBoundingBoxHeight/2
+						viewportBoundsMinY := obstacle.Position.Y + levelBounds.MinY - obstacle.BoundingBox.Height/2
+						player.ViewportPosition.Y = viewportBoundsMinY - player.BoundingBox.Height/2
 						player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
 					} else if player.Velocity.Y < 0 { // Moving down, hit obstacle's top side
-						player.ViewportPosition.Y = obstacleBounds.MaxY + player.BoundingBox.Height/2 + collisionMargin
+						// viewportBoundsMaxY = objectLevelPositionY + levelBounds.MinY + objectBoundingBoxHeight/2
+						viewportBoundsMaxY := obstacle.Position.Y + levelBounds.MinY + obstacle.BoundingBox.Height/2
+						player.ViewportPosition.Y = viewportBoundsMaxY + player.BoundingBox.Height/2
 						player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
 					}
 					player.Velocity.Y = 0 // Stop vertical movement
