@@ -41,8 +41,9 @@ func NewGameLevel2(viewportSize *pb.Size) *GameLevel2 {
 		obstacles: []*pb.ObstacleState{
 			{
 				ObstacleId:  1,
-				BoundingBox: &pb.Size{Width: 200, Height: 200},
-				Position:    &pb.Point{X: 400, Y: 400},
+				BoundingBox: &pb.Size{Width: 200, Height: 480},
+				Position:    &pb.Point{X: 2048, Y: 360},
+				// Position: &pb.Point{X: 0, Y: 360},
 			},
 		},
 	}

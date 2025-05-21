@@ -290,6 +290,7 @@ func (gw *gameWorld) runGameLoop() {
 		}
 		viewportBounds := gw.gameLevel.ViewportBounds()
 		levelBounds := gw.gameLevel.LevelBounds()
+		levelVelocity := gw.gameLevel.LevelVelocity()
 		nextLevelPortal := gw.gameLevel.NextLevelPortal()
 		gw.gameState.Obstacles = gw.gameLevel.LevelObstacles()
 		gw.gameLevelMu.Unlock()
@@ -395,8 +396,19 @@ func (gw *gameWorld) runGameLoop() {
 						viewportBoundsMaxX := obstacle.Position.X + levelBounds.MinX + obstacle.BoundingBox.Width/2
 						player.ViewportPosition.X = viewportBoundsMaxX + player.BoundingBox.Width/2
 						player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
+					} else if levelVelocity.X != 0 {
+						player.ViewportPosition.X += levelVelocity.X * deltaTime
+						player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
+						// if levelVelocity.X > 0 { // World moving right {
+						// 	player.LevelPosition.X = obstacleBounds.MaxX + player.BoundingBox.Width/2
+						// 	player.ViewportPosition.X = player.LevelPosition.X + levelBounds.MinX
+						// }
+						// if levelVelocity.X < 0 { // World moving left
+						// 	player.LevelPosition.X = obstacleBounds.MinX - player.BoundingBox.Width/2
+						// 	player.ViewportPosition.X = player.LevelPosition.X + levelBounds.MinX
+						// }
 					}
-					player.Velocity.X = 0 // Stop horizontal movement
+					player.Velocity.X = 0
 					// No need to check other obstacles on this axis if we clamped.
 					// If you have multiple obstacles very close, you might need to iterate further
 					// or resolve based on the closest collision. For simplicity, we break.
@@ -437,6 +449,17 @@ func (gw *gameWorld) runGameLoop() {
 						viewportBoundsMaxY := obstacle.Position.Y + levelBounds.MinY + obstacle.BoundingBox.Height/2
 						player.ViewportPosition.Y = viewportBoundsMaxY + player.BoundingBox.Height/2
 						player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
+					} else if levelVelocity.Y != 0 {
+						player.ViewportPosition.Y += levelVelocity.Y * deltaTime
+						player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
+						// if levelVelocity.Y > 0 { // World going up
+						// 	player.LevelPosition.Y = obstacleBounds.MaxY + player.BoundingBox.Height/2
+						// 	player.ViewportPosition.Y = player.LevelPosition.Y + levelBounds.MinY
+						// }
+						// if levelVelocity.Y < 0 { // World going down
+						// 	player.LevelPosition.Y = obstacleBounds.MinY - player.BoundingBox.Height/2
+						// 	player.ViewportPosition.Y = player.LevelPosition.Y + levelBounds.MinY
+						// }
 					}
 					player.Velocity.Y = 0 // Stop vertical movement
 					break
