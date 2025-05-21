@@ -78,8 +78,8 @@ func (gl *GameLevel1) UpdateLevelPosition(deltaTime float32) {
 		gl.levelVelocity.X = path.speed * float32(path.direction)
 		gl.levelPosition.X += gl.levelVelocity.X * deltaTime
 		// Bounds check
-		if gl.levelPosition.X < -gl.levelSize.Width {
-			gl.levelPosition.X = -gl.levelSize.Width
+		if gl.levelPosition.X < -gl.levelSize.Width+defaultResolutionWidth {
+			gl.levelPosition.X = -gl.levelSize.Width + defaultResolutionWidth
 			gl.levelVelocity.X = 0
 			gl.pathIndex += 1
 		} else if gl.levelPosition.X > 0 {
@@ -93,8 +93,8 @@ func (gl *GameLevel1) UpdateLevelPosition(deltaTime float32) {
 		gl.levelVelocity.Y = path.speed * float32(path.direction)
 		gl.levelPosition.Y += gl.levelVelocity.Y * deltaTime
 		// Bounds check
-		if gl.levelPosition.Y < -gl.levelSize.Height {
-			gl.levelPosition.Y = -gl.levelSize.Height
+		if gl.levelPosition.Y < -gl.levelSize.Height+defaultResolutionHeight {
+			gl.levelPosition.Y = -gl.levelSize.Height + defaultResolutionHeight
 			gl.levelVelocity.Y = 0
 			gl.pathIndex += 1
 		} else if gl.levelPosition.Y > 0 {

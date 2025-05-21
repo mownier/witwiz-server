@@ -2,6 +2,11 @@ package game_level
 
 import pb "witwiz/proto"
 
+const (
+	defaultResolutionWidth  float32 = 1080
+	defaultResolutionHeight float32 = 720
+)
+
 type GameLevel interface {
 	LevelId() int32
 	LevelSize() *pb.Size
