@@ -47,7 +47,7 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 	s.gameWorld.addPlayer(player, stream)
 
 	defer func() {
-		s.gameWorld.removePlayer(player.PlayerId)
+		s.gameWorld.removePlayer(player.Id)
 	}()
 
 	go func() {
@@ -61,7 +61,7 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 				if err != nil {
 					if err == io.EOF {
 						// Normal client disconnection
-						log.Printf("player %d disconnected\n", player.PlayerId)
+						log.Printf("player %d disconnected\n", player.Id)
 						return
 					}
 					log.Printf("failed to receive input: %v\n", err)
@@ -71,7 +71,7 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 					log.Printf("failed to process input: %v\n", err)
 					return
 				}
-				log.Printf("input from player %d: %v\n", player.PlayerId, input)
+				log.Printf("input from player %d: %v\n", player.Id, input)
 			}
 		}
 	}()
@@ -111,7 +111,7 @@ func (s *Server) generateUniquePlayerId() (int32, error) {
 	if len(s.gameWorld.gameState.Players) == 0 {
 		playerId = 1
 	} else {
-		pId := s.gameWorld.gameState.Players[0].PlayerId
+		pId := s.gameWorld.gameState.Players[0].Id
 		if pId == 1 {
 			playerId = 2
 		} else {

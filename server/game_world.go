@@ -13,12 +13,10 @@ import (
 )
 
 const (
-	playerAcceleration    float32 = 800
-	playerDeceleration    float32 = 1600
-	playerMaxSpeed        float32 = 1200
-	tickRate                      = time.Millisecond * 50
-	defaultViewportWidth  float32 = 1080
-	defaultViewportHeight float32 = 720
+	playerAcceleration float32 = 800
+	playerDeceleration float32 = 1600
+	playerMaxSpeed     float32 = 1200
+	tickRate                   = time.Millisecond * 10
 )
 
 type gameWorld struct {
@@ -44,32 +42,41 @@ func newGameWorld() *gameWorld {
 
 func newGameStateUpdate() *pb.GameStateUpdate {
 	return &pb.GameStateUpdate{
-		Players:        []*pb.PlayerState{},
-		CharacterIds:   []int32{1, 2, 3, 4, 5},
-		LevelId:        0,
-		GameStarted:    false,
-		GameOver:       false,
-		GamePaused:     false,
-		IsInitial:      false,
-		ViewportBounds: &pb.Bounds{MinX: 0, MinY: 0, MaxX: 0, MaxY: 0},
-		LevelBounds:    &pb.Bounds{MinX: 0, MinY: 0, MaxX: 0, MaxY: 0},
-		ViewportSize:   &pb.Size{Width: 0, Height: 0},
-		LevelSize:      &pb.Size{Width: 0, Height: 0},
+		IsInitial: false,
+
+		GameStarted: false,
+		GameOver:    false,
+		GamePaused:  false,
+
+		LevelId:       0,
+		LevelPosition: &pb.Point{X: 0, Y: 0},
+		LevelSize:     &pb.Size{Width: 0, Height: 0},
+
+		Players:      []*pb.PlayerState{},
+		CharacterIds: []int32{1, 2, 3, 4, 5},
+
+		NextLevelPortal: nil,
+		Obstacles:       []*pb.ObstacleState{},
 	}
 }
 
 func newPlayerState(playerId int32) *pb.PlayerState {
-	boundingBox := &pb.Size{Width: 32, Height: 32}
+	size := &pb.Size{Width: 32, Height: 32}
 	return &pb.PlayerState{
-		PlayerId:         playerId,
-		CharacterId:      0,
-		MaxSpeed:         playerMaxSpeed,
-		ViewportPosition: &pb.Point{X: boundingBox.Width / 2, Y: boundingBox.Height / 2},
-		LevelPosition:    &pb.Point{X: boundingBox.Width / 2, Y: boundingBox.Height / 2},
-		Velocity:         &pb.Vector{X: 0, Y: 0},
-		Acceleration:     &pb.Vector{X: 0, Y: 0},
-		TargetVelocity:   &pb.Vector{X: 0, Y: 0},
-		BoundingBox:      boundingBox,
+		Id:          playerId,
+		CharacterId: 0,
+
+		MaxSpeed: playerMaxSpeed,
+
+		Velocity:       &pb.Vector{X: 0, Y: 0},
+		Acceleration:   &pb.Vector{X: 0, Y: 0},
+		TargetVelocity: &pb.Vector{X: 0, Y: 0},
+
+		Size: size,
+		Position: &pb.Point{
+			X: size.Width / 2,
+			Y: size.Height / 2,
+		},
 	}
 }
 
@@ -82,15 +89,13 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 
 	gw.gameLevelMu.Lock()
 
-	viewportSize := &pb.Size{Width: defaultViewportWidth, Height: defaultViewportHeight}
-
 	switch levelId {
 	case 1:
-		level = gl.NewGameLevel1(viewportSize)
+		level = gl.NewGameLevel1()
 		gw.gameLevel = level
 
 	case 2:
-		level = gl.NewGameLevel2(viewportSize)
+		level = gl.NewGameLevel2()
 		gw.gameLevel = level
 	}
 
@@ -103,15 +108,14 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 	gw.gameStateMu.Lock()
 
 	for _, player := range gw.gameState.Players {
-		player.ViewportPosition.X = 0
-		player.ViewportPosition.Y = 0
+		player.Position.X = player.Size.Width / 2
+		player.Position.Y = player.Size.Height / 2
 	}
 	gw.gameState.LevelId = levelId
 	gw.gameState.LevelSize = level.LevelSize()
-	gw.gameState.ViewportSize = level.ViewportSize()
-	gw.gameState.LevelBounds = level.LevelBounds()
-	gw.gameState.ViewportBounds = level.ViewportBounds()
+	gw.gameState.LevelPosition = level.LevelPosition()
 	gw.gameState.Obstacles = level.LevelObstacles()
+	gw.gameState.NextLevelPortal = nil
 
 	gw.gameStateMu.Unlock()
 }
@@ -122,17 +126,17 @@ func (gw *gameWorld) addPlayer(player *pb.PlayerState, stream pb.WitWiz_JoinGame
 	gw.gameStateMu.Unlock()
 
 	gw.playerConnectionsMu.Lock()
-	gw.playerConnections[player.PlayerId] = &playerConnection{playerId: player.PlayerId, stream: stream}
+	gw.playerConnections[player.Id] = &playerConnection{playerId: player.Id, stream: stream}
 	gw.playerConnectionsMu.Unlock()
 
-	log.Printf("player %d joined the game world\n", player.PlayerId)
+	log.Printf("player %d joined the game world\n", player.Id)
 }
 
 func (gw *gameWorld) removePlayer(playerId int32) {
 	gw.gameStateMu.Lock()
 	index := -1
 	for i, p := range gw.gameState.Players {
-		if p.PlayerId == playerId {
+		if p.Id == playerId {
 			index = i
 			break
 		}
@@ -155,7 +159,7 @@ func (gw *gameWorld) processInput(input *pb.PlayerInput) error {
 
 	var player *pb.PlayerState
 	for _, p := range gw.gameState.Players {
-		if p.PlayerId == input.PlayerId {
+		if p.Id == input.PlayerId {
 			player = p
 			break
 		}
@@ -262,7 +266,7 @@ func (gw *gameWorld) runGameLoop() {
 				gw.gameStateMu.Lock()
 				newGameState := newGameStateUpdate()
 				for _, p := range gw.gameState.Players {
-					newGameState.Players = append(newGameState.Players, newPlayerState(p.PlayerId))
+					newGameState.Players = append(newGameState.Players, newPlayerState(p.Id))
 				}
 				gw.gameState = newGameState
 				gw.restarting = false
@@ -288,16 +292,14 @@ func (gw *gameWorld) runGameLoop() {
 			gw.gameLevelMu.Lock()
 			gw.gameStateMu.Lock()
 		}
-		viewportBounds := gw.gameLevel.ViewportBounds()
-		levelBounds := gw.gameLevel.LevelBounds()
-		levelVelocity := gw.gameLevel.LevelVelocity()
+		levelSize := gw.gameLevel.LevelSize()
 		nextLevelPortal := gw.gameLevel.NextLevelPortal()
 		gw.gameState.Obstacles = gw.gameLevel.LevelObstacles()
 		gw.gameLevelMu.Unlock()
 
 		gameOver := false
 		nextLevelId := int32(-1)
-		shouldUpdateViewPortBounds := false
+		shouldUpdateLevelPosition := false
 
 		for _, player := range gw.gameState.Players {
 			// Check if player has selected a character
@@ -313,7 +315,7 @@ func (gw *gameWorld) runGameLoop() {
 				continue
 			}
 
-			shouldUpdateViewPortBounds = true
+			shouldUpdateLevelPosition = true
 
 			// Apply acceleration
 			player.Velocity.X += player.Acceleration.X * deltaTime
@@ -363,50 +365,21 @@ func (gw *gameWorld) runGameLoop() {
 			}
 
 			// Update position
-			potentialViewportPosX := player.ViewportPosition.X + player.Velocity.X*deltaTime
-			potentialLevelPosX := potentialViewportPosX - levelBounds.MinX
-			potentialViewportPosY := player.ViewportPosition.Y + player.Velocity.Y*deltaTime
-			potentialLevelPosY := potentialViewportPosY - levelBounds.MinY
+			potentialLevelPosX := player.Position.X + player.Velocity.X*deltaTime
+			potentialLevelPosY := player.Position.Y + player.Velocity.Y*deltaTime
 
 			// 1. Resolve X-axis movement
-			playerBoundsAtPotentialX := &pb.Bounds{
-				MinX: potentialLevelPosX - player.BoundingBox.Width/2,
-				MaxX: potentialLevelPosX + player.BoundingBox.Width/2,
-				MinY: player.LevelPosition.Y - player.BoundingBox.Height/2,
-				MaxY: player.LevelPosition.Y + player.BoundingBox.Height/2,
-			}
+			playerBoundsAtPotentialX := pb.NewBounds(player.Size, &pb.Point{X: potentialLevelPosX, Y: player.Position.Y})
 
 			for _, obstacle := range gw.gameState.Obstacles {
-				obstacleBounds := &pb.Bounds{
-					MinX: obstacle.Position.X - obstacle.BoundingBox.Width/2,
-					MaxX: obstacle.Position.X + obstacle.BoundingBox.Width/2,
-					MinY: obstacle.Position.Y - obstacle.BoundingBox.Height/2,
-					MaxY: obstacle.Position.Y + obstacle.BoundingBox.Height/2,
-				}
+				obstacleBounds := pb.NewBounds(obstacle.Size, obstacle.Position)
 				if checkCollision(playerBoundsAtPotentialX, obstacleBounds) {
 					// Collision on X-axis detected.
 					// Determine which side the player hit and clamp their position.
 					if player.Velocity.X > 0 { // Moving right, hit obstacle's left side
-						// viewportBoundsMinX = objectLevelPositionX + levelBounds.MinX - objectBoundingBoxWidth/2
-						viewportBoundsMinX := obstacle.Position.X + levelBounds.MinX - obstacle.BoundingBox.Width/2
-						player.ViewportPosition.X = viewportBoundsMinX - player.BoundingBox.Width/2
-						player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
+						player.Position.X = obstacleBounds.MinX - player.Size.Width/2
 					} else if player.Velocity.X < 0 { // Moving left, hit obstacle's right side
-						// viewportBoundsMaxX = objectLevelPositionX + levelBounds.MinX + objectBoundingBoxWidth/2
-						viewportBoundsMaxX := obstacle.Position.X + levelBounds.MinX + obstacle.BoundingBox.Width/2
-						player.ViewportPosition.X = viewportBoundsMaxX + player.BoundingBox.Width/2
-						player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
-					} else if levelVelocity.X != 0 {
-						player.ViewportPosition.X += levelVelocity.X * deltaTime
-						player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
-						// if levelVelocity.X > 0 { // World moving right {
-						// 	player.LevelPosition.X = obstacleBounds.MaxX + player.BoundingBox.Width/2
-						// 	player.ViewportPosition.X = player.LevelPosition.X + levelBounds.MinX
-						// }
-						// if levelVelocity.X < 0 { // World moving left
-						// 	player.LevelPosition.X = obstacleBounds.MinX - player.BoundingBox.Width/2
-						// 	player.ViewportPosition.X = player.LevelPosition.X + levelBounds.MinX
-						// }
+						player.Position.X = obstacleBounds.MaxX + player.Size.Width/2
 					}
 					player.Velocity.X = 0
 					// No need to check other obstacles on this axis if we clamped.
@@ -417,49 +390,21 @@ func (gw *gameWorld) runGameLoop() {
 			}
 			// If no X-collision, update X position
 			if player.Velocity.X != 0 { // Only update if not stopped by collision
-				player.ViewportPosition.X = potentialViewportPosX
-				player.LevelPosition.X = potentialLevelPosX
+				player.Position.X = potentialLevelPosX
 			}
 
 			// 2. Resolve Y-axis movement
 			// Assume player attempts to move vertically (after potential X correction)
-			playerBoundsAtPotentialY := &pb.Bounds{
-				MinX: player.LevelPosition.X - player.BoundingBox.Width/2,
-				MaxX: player.LevelPosition.X + player.BoundingBox.Width/2,
-				MinY: potentialLevelPosY - player.BoundingBox.Height/2,
-				MaxY: potentialLevelPosY + player.BoundingBox.Height/2,
-			}
+			playerBoundsAtPotentialY := pb.NewBounds(player.Size, &pb.Point{X: player.Position.X, Y: potentialLevelPosY})
 			for _, obstacle := range gw.gameState.Obstacles {
-				obstacleBounds := &pb.Bounds{
-					MinX: obstacle.Position.X - obstacle.BoundingBox.Width/2,
-					MaxX: obstacle.Position.X + obstacle.BoundingBox.Width/2,
-					MinY: obstacle.Position.Y - obstacle.BoundingBox.Height/2,
-					MaxY: obstacle.Position.Y + obstacle.BoundingBox.Height/2,
-				}
+				obstacleBounds := pb.NewBounds(obstacle.Size, obstacle.Position)
 				if checkCollision(playerBoundsAtPotentialY, obstacleBounds) {
 					// Collision on Y-axis detected.
 					// Determine which side the player hit and clamp their position.
 					if player.Velocity.Y > 0 { // Moving up, hit obstacle's bottom side
-						// viewportBoundsMinY = objectLevelPositionY + levelBounds.MinY - objectBoundingBoxHeight/2
-						viewportBoundsMinY := obstacle.Position.Y + levelBounds.MinY - obstacle.BoundingBox.Height/2
-						player.ViewportPosition.Y = viewportBoundsMinY - player.BoundingBox.Height/2
-						player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
+						player.Position.Y = obstacleBounds.MinY - player.Size.Height/2
 					} else if player.Velocity.Y < 0 { // Moving down, hit obstacle's top side
-						// viewportBoundsMaxY = objectLevelPositionY + levelBounds.MinY + objectBoundingBoxHeight/2
-						viewportBoundsMaxY := obstacle.Position.Y + levelBounds.MinY + obstacle.BoundingBox.Height/2
-						player.ViewportPosition.Y = viewportBoundsMaxY + player.BoundingBox.Height/2
-						player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
-					} else if levelVelocity.Y != 0 {
-						player.ViewportPosition.Y += levelVelocity.Y * deltaTime
-						player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
-						// if levelVelocity.Y > 0 { // World going up
-						// 	player.LevelPosition.Y = obstacleBounds.MaxY + player.BoundingBox.Height/2
-						// 	player.ViewportPosition.Y = player.LevelPosition.Y + levelBounds.MinY
-						// }
-						// if levelVelocity.Y < 0 { // World going down
-						// 	player.LevelPosition.Y = obstacleBounds.MinY - player.BoundingBox.Height/2
-						// 	player.ViewportPosition.Y = player.LevelPosition.Y + levelBounds.MinY
-						// }
+						player.Position.Y = obstacleBounds.MaxY + player.Size.Height/2
 					}
 					player.Velocity.Y = 0 // Stop vertical movement
 					break
@@ -467,46 +412,31 @@ func (gw *gameWorld) runGameLoop() {
 			}
 			// If no Y-collision, update Y position
 			if player.Velocity.Y != 0 { // Only update if not stopped by collision
-				player.ViewportPosition.Y = potentialViewportPosY
-				player.LevelPosition.Y = potentialLevelPosY
+				player.Position.Y = potentialLevelPosY
 			}
 
 			// Bounds check
-			if player.ViewportPosition.X <= viewportBounds.MinX+player.BoundingBox.Width/2 {
-				player.ViewportPosition.X = viewportBounds.MinX + player.BoundingBox.Width/2
-				player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
+			if player.Position.X < player.Size.Width/2 {
+				player.Position.X = player.Size.Width / 2
 				player.Velocity.X = 0
-			} else if player.ViewportPosition.X >= viewportBounds.MaxX-player.BoundingBox.Width/2 {
-				player.ViewportPosition.X = viewportBounds.MaxX - player.BoundingBox.Width/2
-				player.LevelPosition.X = player.ViewportPosition.X - levelBounds.MinX
+			} else if player.Position.X > levelSize.Width-player.Size.Width/2 {
+				player.Position.X = levelSize.Width - player.Size.Width/2
 				player.Velocity.X = 0
 			}
 
-			if player.ViewportPosition.Y <= viewportBounds.MinY+player.BoundingBox.Height/2 {
-				player.ViewportPosition.Y = viewportBounds.MinY + player.BoundingBox.Height/2
-				player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
+			if player.Position.Y < player.Size.Height/2 {
+				player.Position.Y = player.Size.Height / 2
 				player.Velocity.Y = 0
-			} else if player.ViewportPosition.Y >= viewportBounds.MaxY-player.BoundingBox.Height/2 {
-				player.ViewportPosition.Y = viewportBounds.MaxY - player.BoundingBox.Height/2
-				player.LevelPosition.Y = player.ViewportPosition.Y - levelBounds.MinY
+			} else if player.Position.Y > levelSize.Height-player.Size.Height/2 {
+				player.Position.Y = levelSize.Height - player.Size.Height/2
 				player.Velocity.Y = 0
 			}
 
 			// Check Next Level Portal
 			if nextLevelPortal != nil {
 				gw.gameState.NextLevelPortal = nextLevelPortal
-				bounds1 := &pb.Bounds{
-					MinX: player.LevelPosition.X - player.BoundingBox.Width/2,
-					MaxX: player.LevelPosition.X + player.BoundingBox.Width/2,
-					MinY: player.LevelPosition.Y - player.BoundingBox.Height/2,
-					MaxY: player.LevelPosition.Y + player.BoundingBox.Height/2,
-				}
-				bounds2 := &pb.Bounds{
-					MinX: nextLevelPortal.Position.X - nextLevelPortal.BoundingBox.Width/2,
-					MaxX: nextLevelPortal.Position.X + nextLevelPortal.BoundingBox.Width/2,
-					MinY: nextLevelPortal.Position.Y - nextLevelPortal.BoundingBox.Height/2,
-					MaxY: nextLevelPortal.Position.Y + nextLevelPortal.BoundingBox.Height/2,
-				}
+				bounds1 := pb.NewBounds(player.Size, player.Position)
+				bounds2 := pb.NewBounds(nextLevelPortal.Size, nextLevelPortal.Position)
 				collided := checkCollision(bounds1, bounds2)
 				if collided {
 					if len(gw.gameLevels) == 0 {
@@ -521,16 +451,12 @@ func (gw *gameWorld) runGameLoop() {
 			}
 		}
 
-		// Compute player view port bounds
-		if shouldUpdateViewPortBounds {
+		if shouldUpdateLevelPosition {
 			gw.gameLevelMu.Lock()
-			gw.gameLevel.UpdateViewportBounds(deltaTime)
-			updatedViewportBounds := gw.gameLevel.ViewportBounds()
-			updatedLevelBounds := gw.gameLevel.LevelBounds()
+			gw.gameLevel.UpdateLevelPosition(deltaTime)
+			updatedLevelPosition := gw.gameLevel.LevelPosition()
 			gw.gameLevelMu.Unlock()
-
-			gw.gameState.ViewportBounds = updatedViewportBounds
-			gw.gameState.LevelBounds = updatedLevelBounds
+			gw.gameState.LevelPosition = updatedLevelPosition
 		}
 
 		if gameOver {
