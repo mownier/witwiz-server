@@ -79,7 +79,7 @@ func newPlayerState(playerId int32) *pb.PlayerState {
 }
 
 func gameLevelArrangement() []int32 {
-	return []int32{2, 1}
+	return []int32{1, 2}
 }
 
 func (gw *gameWorld) changeLevel(levelId int32) {

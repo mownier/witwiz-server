@@ -73,3 +73,111 @@ func defaultLevelEdges(levelSize *pb.Size) []*pb.LevelEdgeState {
 		},
 	}
 }
+
+type baseGameLevel struct {
+	levelId         int32
+	levelSize       *pb.Size
+	levelPosition   *pb.Point
+	levelVelocity   *pb.Vector
+	levelEdges      []*pb.LevelEdgeState
+	nextLevelPortal *pb.NextLevelPortalState
+	obstacles       []*pb.ObstacleState
+	paths           []*path
+	pathIndex       int
+}
+
+func newBaseGameLevel(levelId int32, levelSize *pb.Size) *baseGameLevel {
+	return &baseGameLevel{
+		levelId:         levelId,
+		levelSize:       levelSize,
+		levelPosition:   &pb.Point{X: 0, Y: 0},
+		levelVelocity:   &pb.Vector{X: 0, Y: 0},
+		obstacles:       []*pb.ObstacleState{},
+		nextLevelPortal: nil,
+		paths:           []*path{},
+		pathIndex:       -1,
+		levelEdges:      defaultLevelEdges(levelSize),
+	}
+}
+
+func (gl *baseGameLevel) LevelId() int32 {
+	return gl.levelId
+}
+
+func (gl *baseGameLevel) LevelSize() *pb.Size {
+	return gl.levelSize
+}
+
+func (gl *baseGameLevel) LevelPosition() *pb.Point {
+	return gl.levelPosition
+}
+
+func (gl *baseGameLevel) LevelVelocity() *pb.Vector {
+	return gl.levelVelocity
+}
+
+func (gl *baseGameLevel) LevelObstacles() []*pb.ObstacleState {
+	return gl.obstacles
+}
+
+func (gl *baseGameLevel) LevelEdges() []*pb.LevelEdgeState {
+	return gl.levelEdges
+}
+
+func (gl *baseGameLevel) UpdateLevelPosition(deltaTime float32) {
+	if len(gl.paths) == 0 {
+		return
+	}
+
+	if gl.pathIndex >= len(gl.paths) {
+		gl.levelVelocity.X = 0
+		gl.levelVelocity.Y = 0
+		return
+	}
+
+	path := gl.paths[gl.pathIndex]
+
+	switch path.scroll {
+	case SCROLL_HORIZONTALLY:
+		gl.levelVelocity.Y = 0
+		gl.levelVelocity.X = path.speed * float32(path.direction)
+		gl.levelPosition.X += gl.levelVelocity.X * deltaTime
+		// Bounds check
+		if gl.levelPosition.X < -gl.levelSize.Width+defaultResolutionWidth {
+			gl.levelPosition.X = -gl.levelSize.Width + defaultResolutionWidth
+			gl.levelVelocity.X = 0
+			gl.pathIndex += 1
+		} else if gl.levelPosition.X > 0 {
+			gl.levelPosition.X = 0
+			gl.levelVelocity.X = 0
+			gl.pathIndex += 1
+		}
+
+	case SCROLL_VERTICALLY:
+		gl.levelVelocity.X = 0
+		gl.levelVelocity.Y = path.speed * float32(path.direction)
+		gl.levelPosition.Y += gl.levelVelocity.Y * deltaTime
+		// Bounds check
+		if gl.levelPosition.Y < -gl.levelSize.Height+defaultResolutionHeight {
+			gl.levelPosition.Y = -gl.levelSize.Height + defaultResolutionHeight
+			gl.levelVelocity.Y = 0
+			gl.pathIndex += 1
+		} else if gl.levelPosition.Y > 0 {
+			gl.levelPosition.Y = 0
+			gl.levelVelocity.Y = 0
+			gl.pathIndex += 1
+		}
+	}
+
+	for _, edge := range gl.levelEdges {
+		if edge.Id == 1 || edge.Id == 2 {
+			edge.Position.X += gl.levelVelocity.X * -1 * deltaTime
+		} else if edge.Id == 3 || edge.Id == 4 {
+			edge.Position.Y += gl.levelVelocity.Y * -1 * deltaTime
+		}
+	}
+}
+
+func (gl *baseGameLevel) NextLevelPortal() *pb.NextLevelPortalState {
+	return gl.nextLevelPortal
+}
