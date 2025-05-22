@@ -16,7 +16,7 @@ const (
 	playerAcceleration float32 = 800
 	playerDeceleration float32 = 1600
 	playerMaxSpeed     float32 = 1200
-	tickRate                   = time.Millisecond * 10
+	tickRate                   = time.Millisecond * 5
 )
 
 type gameWorld struct {
@@ -51,6 +51,7 @@ func newGameStateUpdate() *pb.GameStateUpdate {
 		LevelId:       0,
 		LevelPosition: &pb.Point{X: 0, Y: 0},
 		LevelSize:     &pb.Size{Width: 0, Height: 0},
+		LevelEdges:    []*pb.LevelEdgeState{},
 
 		Players:      []*pb.PlayerState{},
 		CharacterIds: []int32{1, 2, 3, 4, 5},
@@ -72,16 +73,13 @@ func newPlayerState(playerId int32) *pb.PlayerState {
 		Acceleration:   &pb.Vector{X: 0, Y: 0},
 		TargetVelocity: &pb.Vector{X: 0, Y: 0},
 
-		Size: size,
-		Position: &pb.Point{
-			X: size.Width / 2,
-			Y: size.Height / 2,
-		},
+		Size:     size,
+		Position: &pb.Point{X: 0, Y: 0},
 	}
 }
 
 func gameLevelArrangement() []int32 {
-	return []int32{1, 2}
+	return []int32{2, 1}
 }
 
 func (gw *gameWorld) changeLevel(levelId int32) {
@@ -107,15 +105,17 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 
 	gw.gameStateMu.Lock()
 
-	for _, player := range gw.gameState.Players {
-		player.Position.X = player.Size.Width / 2
-		player.Position.Y = player.Size.Height / 2
-	}
 	gw.gameState.LevelId = levelId
 	gw.gameState.LevelSize = level.LevelSize()
 	gw.gameState.LevelPosition = level.LevelPosition()
 	gw.gameState.Obstacles = level.LevelObstacles()
+	gw.gameState.LevelEdges = level.LevelEdges()
 	gw.gameState.NextLevelPortal = nil
+
+	for _, player := range gw.gameState.Players {
+		player.Position.X = player.Size.Width/2 + 500
+		player.Position.Y = player.Size.Height/2 + 400
+	}
 
 	gw.gameStateMu.Unlock()
 }
@@ -292,6 +292,8 @@ func (gw *gameWorld) runGameLoop() {
 			gw.gameLevelMu.Lock()
 			gw.gameStateMu.Lock()
 		}
+		levelVelocity := gw.gameLevel.LevelVelocity()
+		levelEdges := gw.gameLevel.LevelEdges()
 		levelSize := gw.gameLevel.LevelSize()
 		nextLevelPortal := gw.gameLevel.NextLevelPortal()
 		gw.gameState.Obstacles = gw.gameLevel.LevelObstacles()
@@ -413,6 +415,95 @@ func (gw *gameWorld) runGameLoop() {
 			// If no Y-collision, update Y position
 			if player.Velocity.Y != 0 { // Only update if not stopped by collision
 				player.Position.Y = potentialLevelPosY
+			}
+
+			// Level edges check
+			if len(levelEdges) > 0 {
+				playerBounds := pb.NewBounds(player.Size, player.Position)
+				for _, edge := range levelEdges {
+					edgeBounds := pb.NewBounds(edge.Size, edge.Position)
+					if edge.Id == gl.LEVEL_EDGE_LEFT || edge.Id == gl.LEVEL_EDGE_RIGHT {
+						if checkCollision(playerBounds, edgeBounds) {
+							if edge.Id == gl.LEVEL_EDGE_LEFT && player.Velocity.X == 0 {
+								levelVelocityX := player.Position.X + levelVelocity.X*deltaTime
+								edgeBoundsX := edgeBounds.MaxX + player.Size.Width/2
+								diff := edgeBoundsX - levelVelocityX
+								player.Position.X = edgeBoundsX + diff/2
+
+							} else if edge.Id == gl.LEVEL_EDGE_RIGHT && player.Velocity.X == 0 {
+								levelVelocityX := player.Position.X + levelVelocity.X*deltaTime
+								edgeBoundsX := edgeBounds.MinX - player.Size.Width/2
+								diff := levelVelocityX - edgeBoundsX
+								player.Position.X = edgeBoundsX - diff/2
+
+							} else if edge.Id == gl.LEVEL_EDGE_LEFT && player.Velocity.X > 0 {
+								player.Velocity.X = levelVelocity.X * -1
+								player.Position.X = edgeBounds.MaxX + player.Size.Width/2
+								player.Position.X += player.Velocity.X * deltaTime
+
+							} else if edge.Id == gl.LEVEL_EDGE_RIGHT && player.Velocity.X < 0 {
+								player.Velocity.X = levelVelocity.X * -1
+								player.Position.X = edgeBounds.MinX - player.Size.Width/2
+								player.Position.X += player.Velocity.X * deltaTime
+
+							} else if edge.Id == gl.LEVEL_EDGE_LEFT && player.Velocity.X < 0 {
+								player.Position.X = edgeBounds.MaxX + player.Size.Width/2
+								player.Velocity.X = 0
+
+							} else if edge.Id == gl.LEVEL_EDGE_RIGHT && player.Velocity.X > 0 {
+								player.Position.X = edgeBounds.MinX - player.Size.Width/2
+								player.Velocity.X = 0
+
+							} else {
+								player.Velocity.X = 0
+							}
+							break
+						}
+					}
+				}
+
+				playerBounds = pb.NewBounds(player.Size, player.Position)
+				for _, edge := range levelEdges {
+					edgeBounds := pb.NewBounds(edge.Size, edge.Position)
+					if edge.Id == gl.LEVEL_EDGE_BOTTOM || edge.Id == gl.LEVEL_EDGE_TOP {
+						if checkCollision(playerBounds, edgeBounds) {
+							if edge.Id == gl.LEVEL_EDGE_BOTTOM && player.Velocity.Y == 0 {
+								levelVelocityY := player.Position.Y + levelVelocity.Y*deltaTime
+								edgeBoundsY := edgeBounds.MaxY + player.Size.Width/2
+								diff := edgeBoundsY - levelVelocityY
+								player.Position.Y = edgeBoundsY + diff/2
+
+							} else if edge.Id == gl.LEVEL_EDGE_TOP && player.Velocity.Y == 0 {
+								levelVelocityY := player.Position.Y + levelVelocity.Y*deltaTime
+								edgeBoundsY := edgeBounds.MinY - player.Size.Width/2
+								diff := levelVelocityY - edgeBoundsY
+								player.Position.Y = edgeBoundsY - diff/2
+
+							} else if edge.Id == gl.LEVEL_EDGE_BOTTOM && player.Velocity.Y > 0 {
+								player.Velocity.Y = levelVelocity.Y * -1
+								player.Position.Y = edgeBounds.MaxY + player.Size.Width/2
+								player.Position.Y += player.Velocity.Y * deltaTime
+
+							} else if edge.Id == gl.LEVEL_EDGE_TOP && player.Velocity.Y < 0 {
+								player.Velocity.Y = levelVelocity.Y * -1
+								player.Position.Y = edgeBounds.MinY - player.Size.Width/2
+								player.Position.Y += player.Velocity.Y * deltaTime
+
+							} else if edge.Id == gl.LEVEL_EDGE_BOTTOM && player.Velocity.Y < 0 {
+								player.Position.Y = edgeBounds.MaxY + player.Size.Width/2
+								player.Velocity.Y = 0
+
+							} else if edge.Id == gl.LEVEL_EDGE_TOP && player.Velocity.Y > 0 {
+								player.Position.Y = edgeBounds.MinY - player.Size.Width/2
+								player.Velocity.Y = 0
+
+							} else {
+								player.Velocity.Y = 0
+							}
+							break
+						}
+					}
+				}
 			}
 
 			// Bounds check

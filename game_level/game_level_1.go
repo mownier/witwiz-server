@@ -9,6 +9,7 @@ type GameLevel1 struct {
 	levelSize       *pb.Size
 	levelPosition   *pb.Point
 	levelVelocity   *pb.Vector
+	levelEdges      []*pb.LevelEdgeState
 	nextLevelPortal *pb.NextLevelPortalState
 	obstacles       []*pb.ObstacleState
 	paths           []*path
@@ -16,7 +17,7 @@ type GameLevel1 struct {
 }
 
 func NewGameLevel1() *GameLevel1 {
-	return &GameLevel1{
+	gl := &GameLevel1{
 		levelId:         1,
 		levelSize:       &pb.Size{Width: 5120, Height: 1024},
 		levelPosition:   &pb.Point{X: 0, Y: 0},
@@ -26,9 +27,13 @@ func NewGameLevel1() *GameLevel1 {
 		paths: []*path{
 			{scroll: SCROLL_VERTICALLY, speed: 200, direction: DIRECTION_NEGATIVE},
 			{scroll: SCROLL_VERTICALLY, speed: 200, direction: DIRECTION_POSITIVE},
+			{scroll: SCROLL_HORIZONTALLY, speed: 200, direction: DIRECTION_NEGATIVE},
+			{scroll: SCROLL_HORIZONTALLY, speed: 200, direction: DIRECTION_POSITIVE},
 		},
 		pathIndex: 0,
 	}
+	gl.levelEdges = defaultLevelEdges(gl.levelSize)
+	return gl
 }
 
 func (gl *GameLevel1) LevelId() int32 {
@@ -103,6 +108,14 @@ func (gl *GameLevel1) UpdateLevelPosition(deltaTime float32) {
 			gl.pathIndex += 1
 		}
 	}
+
+	for _, edge := range gl.levelEdges {
+		if edge.Id == 1 || edge.Id == 2 {
+			edge.Position.X += gl.levelVelocity.X * -1 * deltaTime
+		} else if edge.Id == 3 || edge.Id == 4 {
+			edge.Position.Y += gl.levelVelocity.Y * -1 * deltaTime
+		}
+	}
 }
 
 func (gl *GameLevel1) NextLevelPortal() *pb.NextLevelPortalState {
@@ -115,4 +128,8 @@ func (gl *GameLevel1) LevelObstacles() []*pb.ObstacleState {
 
 func (gl *GameLevel1) LevelVelocity() *pb.Vector {
 	return gl.levelVelocity
+}
+
+func (gl *GameLevel1) LevelEdges() []*pb.LevelEdgeState {
+	return gl.levelEdges
 }
