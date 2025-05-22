@@ -1,6 +1,8 @@
 package game_level
 
-import pb "witwiz/proto"
+import (
+	pb "witwiz/proto"
+)
 
 const (
 	defaultResolutionWidth  float32 = 1080
@@ -170,10 +172,22 @@ func (gl *baseGameLevel) UpdateLevelPosition(deltaTime float32) {
 	}
 
 	for _, edge := range gl.levelEdges {
-		if edge.Id == 1 || edge.Id == 2 {
+		if edge.Id == LEVEL_EDGE_LEFT || edge.Id == LEVEL_EDGE_RIGHT {
 			edge.Position.X += gl.levelVelocity.X * -1 * deltaTime
-		} else if edge.Id == 3 || edge.Id == 4 {
+			edgeBounds := pb.NewBounds(edge.Size, edge.Position)
+			if edge.Id == LEVEL_EDGE_LEFT && edgeBounds.MinX < 0 {
+				edge.Position.X = edge.Size.Width / 2
+			} else if edge.Id == LEVEL_EDGE_RIGHT && edgeBounds.MaxX > gl.levelSize.Width {
+				edge.Position.X = gl.levelSize.Width - edge.Size.Width/2
+			}
+		} else if edge.Id == LEVEL_EDGE_BOTTOM || edge.Id == LEVEL_EDGE_TOP {
 			edge.Position.Y += gl.levelVelocity.Y * -1 * deltaTime
+			edgeBounds := pb.NewBounds(edge.Size, edge.Position)
+			if edge.Id == LEVEL_EDGE_BOTTOM && edgeBounds.MinY < 0 {
+				edge.Position.Y = edge.Size.Height / 2
+			} else if edge.Id == LEVEL_EDGE_TOP && edgeBounds.MaxY > gl.levelSize.Height {
+				edge.Position.Y = gl.levelSize.Height - edge.Size.Height/2
+			}
 		}
 	}
 }
