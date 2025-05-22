@@ -179,7 +179,18 @@ func (gl *baseGameLevel) UpdateLevelPosition(deltaTime float32) {
 				edge.Position.X = edge.Size.Width / 2
 			} else if edge.Id == LEVEL_EDGE_RIGHT && edgeBounds.MaxX > gl.levelSize.Width {
 				edge.Position.X = gl.levelSize.Width - edge.Size.Width/2
+			} else if edge.Id == LEVEL_EDGE_LEFT {
+				diff := (edge.Position.X + gl.levelPosition.X) - (edge.Size.Width / 2)
+				if diff != 0.0000000000000000000000 {
+					edge.Position.X -= diff
+				}
+			} else if edge.Id == LEVEL_EDGE_RIGHT {
+				diff := (edge.Position.X + gl.levelPosition.X - defaultResolutionWidth) + (edge.Size.Width / 2)
+				if diff != 0.0000000000000000000000 {
+					edge.Position.X -= diff
+				}
 			}
+
 		} else if edge.Id == LEVEL_EDGE_BOTTOM || edge.Id == LEVEL_EDGE_TOP {
 			edge.Position.Y += gl.levelVelocity.Y * -1 * deltaTime
 			edgeBounds := pb.NewBounds(edge.Size, edge.Position)
@@ -187,6 +198,16 @@ func (gl *baseGameLevel) UpdateLevelPosition(deltaTime float32) {
 				edge.Position.Y = edge.Size.Height / 2
 			} else if edge.Id == LEVEL_EDGE_TOP && edgeBounds.MaxY > gl.levelSize.Height {
 				edge.Position.Y = gl.levelSize.Height - edge.Size.Height/2
+			} else if edge.Id == LEVEL_EDGE_BOTTOM {
+				diff := (edge.Position.Y + gl.levelPosition.Y) - (edge.Size.Height / 2)
+				if diff != 0.0000000000000000000000 {
+					edge.Position.Y -= diff
+				}
+			} else if edge.Id == LEVEL_EDGE_TOP {
+				diff := (edge.Position.Y + gl.levelPosition.Y - defaultResolutionHeight) + (edge.Size.Height / 2)
+				if diff != 0.0000000000000000000000 {
+					edge.Position.Y -= diff
+				}
 			}
 		}
 	}
