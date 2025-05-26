@@ -9,6 +9,8 @@ const (
 	defaultResolutionHeight float32 = 720
 	defaultLevelEdgeAlongX  float32 = 8
 	defaultLevelEdgeAlongY  float32 = 8
+	tileSize                int     = 32
+	chunkSize               int     = 16
 )
 
 type GameLevel interface {
@@ -20,6 +22,7 @@ type GameLevel interface {
 	LevelEdges() []*pb.LevelEdgeState
 	UpdateLevelPosition(deltaTime float32)
 	NextLevelPortal() *pb.NextLevelPortalState
+	TileChunks() []*pb.TileChunk
 }
 
 type path struct {
@@ -86,9 +89,20 @@ type baseGameLevel struct {
 	obstacles       []*pb.ObstacleState
 	paths           []*path
 	pathIndex       int
+	tiles           [][]int32
+	tileColCount    int
+	tileRowCount    int
+	chunkRowCount   int
+	chunkColCount   int
 }
 
 func newBaseGameLevel(levelId int32, levelSize *pb.Size) *baseGameLevel {
+	tileRowCount := int(levelSize.Height) / tileSize
+	tileColCount := int(levelSize.Width) / tileSize
+	tiles := make([][]int32, tileRowCount)
+	for row := 0; row < tileRowCount; row++ {
+		tiles[row] = make([]int32, tileColCount)
+	}
 	return &baseGameLevel{
 		levelId:         levelId,
 		levelSize:       levelSize,
@@ -99,6 +113,11 @@ func newBaseGameLevel(levelId int32, levelSize *pb.Size) *baseGameLevel {
 		paths:           []*path{},
 		pathIndex:       -1,
 		levelEdges:      defaultLevelEdges(levelSize),
+		tiles:           tiles,
+		tileRowCount:    tileRowCount,
+		tileColCount:    tileColCount,
+		chunkRowCount:   tileRowCount / int(chunkSize),
+		chunkColCount:   tileColCount / int(chunkSize),
 	}
 }
 
@@ -215,4 +234,35 @@ func (gl *baseGameLevel) UpdateLevelPosition(deltaTime float32) {
 
 func (gl *baseGameLevel) NextLevelPortal() *pb.NextLevelPortalState {
 	return gl.nextLevelPortal
+}
+
+func (gl *baseGameLevel) TileChunks() []*pb.TileChunk {
+	tileChunks := []*pb.TileChunk{}
+	for chunkRow := 0; chunkRow < gl.chunkRowCount; chunkRow++ {
+		for chunkCol := 0; chunkCol < gl.chunkColCount; chunkCol++ {
+			tileChunk := &pb.TileChunk{Row: int32(chunkRow), Col: int32(chunkCol), Tiles: []*pb.Tile{}}
+
+			// Calculate the starting tile coordinates for the current chunk
+			startTileCol := chunkCol * chunkSize
+			startTileRow := chunkRow * chunkSize
+
+			// Calculate the ending tile coordinates for the current chunk (exclusive)
+			endTileCol := startTileCol + chunkSize
+			endTileRow := startTileRow + chunkSize
+
+			for tileRow := startTileRow; tileRow < endTileRow; tileRow++ {
+				for tileCol := startTileCol; tileCol < endTileCol; tileCol++ {
+					tileId := gl.tiles[tileRow][tileCol]
+					tileChunk.Tiles = append(tileChunk.Tiles, &pb.Tile{Row: int32(tileRow), Col: int32(tileCol), Id: tileId})
+				}
+			}
+
+			if len(tileChunk.Tiles) == 0 {
+				continue
+			}
+
+			tileChunks = append(tileChunks, tileChunk)
+		}
+	}
+	return tileChunks
 }

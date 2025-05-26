@@ -5,7 +5,7 @@ import (
 )
 
 type GameLevel2 struct {
-	base *baseGameLevel
+	*baseGameLevel
 }
 
 func NewGameLevel2() *GameLevel2 {
@@ -22,49 +22,38 @@ func NewGameLevel2() *GameLevel2 {
 			Position: &pb.Point{X: 2048, Y: 400},
 		},
 	)
-	return &GameLevel2{base: base}
-}
-
-func (gl *GameLevel2) LevelId() int32 {
-	return gl.base.LevelId()
-}
-
-func (gl *GameLevel2) LevelSize() *pb.Size {
-	return gl.base.LevelSize()
-}
-
-func (gl *GameLevel2) LevelPosition() *pb.Point {
-	return gl.base.LevelPosition()
+	for row := 0; row < base.tileRowCount; row++ {
+		for col := 0; col < base.tileColCount; col++ {
+			if col%2 == 0 {
+				if row%2 == 0 {
+					base.tiles[row][col] = 3
+				} else {
+					base.tiles[row][col] = 4
+				}
+			} else {
+				if row%2 == 0 {
+					base.tiles[row][col] = 4
+				} else {
+					base.tiles[row][col] = 3
+				}
+			}
+		}
+	}
+	return &GameLevel2{baseGameLevel: base}
 }
 
 func (gl *GameLevel2) UpdateLevelPosition(deltaTime float32) {
-	gl.base.UpdateLevelPosition(deltaTime)
-	if gl.base.pathIndex < len(gl.base.paths) ||
-		gl.base.nextLevelPortal != nil {
+	gl.baseGameLevel.UpdateLevelPosition(deltaTime)
+	if gl.pathIndex < len(gl.paths) ||
+		gl.nextLevelPortal != nil {
 		return
 	}
 	size := &pb.Size{Width: 100, Height: defaultResolutionHeight}
-	gl.base.nextLevelPortal = &pb.NextLevelPortalState{
+	gl.nextLevelPortal = &pb.NextLevelPortalState{
 		Size: size,
 		Position: &pb.Point{
 			X: defaultResolutionWidth - size.Width/2,
 			Y: defaultResolutionHeight - size.Height/2,
 		},
 	}
-}
-
-func (gl *GameLevel2) NextLevelPortal() *pb.NextLevelPortalState {
-	return gl.base.NextLevelPortal()
-}
-
-func (gl *GameLevel2) LevelObstacles() []*pb.ObstacleState {
-	return gl.base.LevelObstacles()
-}
-
-func (gl *GameLevel2) LevelVelocity() *pb.Vector {
-	return gl.base.LevelVelocity()
-}
-
-func (gl *GameLevel2) LevelEdges() []*pb.LevelEdgeState {
-	return gl.base.LevelEdges()
 }

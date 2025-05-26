@@ -111,6 +111,7 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 	gw.gameState.Obstacles = level.LevelObstacles()
 	gw.gameState.LevelEdges = level.LevelEdges()
 	gw.gameState.NextLevelPortal = nil
+	gw.gameState.TileChunks = level.TileChunks()
 
 	for _, player := range gw.gameState.Players {
 		player.Position.X = player.Size.Width/2 + 500
@@ -118,6 +119,18 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 	}
 
 	gw.gameStateMu.Unlock()
+
+	gw.playerConnectionsMu.Lock()
+	for _, conn := range gw.playerConnections {
+		initialData := &pb.GameStateUpdate{
+			IsInitial:  true,
+			TileChunks: level.TileChunks(),
+		}
+		if err := conn.stream.Send(initialData); err != nil {
+			log.Printf("failed to send initial data for tile chunks to player %d: %v\n", conn.playerId, err)
+		}
+	}
+	gw.playerConnectionsMu.Unlock()
 }
 
 func (gw *gameWorld) addPlayer(player *pb.PlayerState, stream pb.WitWiz_JoinGameServer) {
@@ -546,8 +559,10 @@ func (gw *gameWorld) runGameLoop() {
 			gw.gameLevelMu.Lock()
 			gw.gameLevel.UpdateLevelPosition(deltaTime)
 			updatedLevelPosition := gw.gameLevel.LevelPosition()
+			updatedTileChunks := gw.gameLevel.TileChunks()
 			gw.gameLevelMu.Unlock()
 			gw.gameState.LevelPosition = updatedLevelPosition
+			gw.gameState.TileChunks = updatedTileChunks
 		}
 
 		if gameOver {

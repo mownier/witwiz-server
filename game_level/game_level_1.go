@@ -5,7 +5,7 @@ import (
 )
 
 type GameLevel1 struct {
-	base *baseGameLevel
+	*baseGameLevel
 }
 
 func NewGameLevel1() *GameLevel1 {
@@ -13,33 +13,38 @@ func NewGameLevel1() *GameLevel1 {
 	base.paths = append(base.paths,
 		&path{scroll: SCROLL_VERTICALLY, speed: 200, direction: DIRECTION_NEGATIVE},
 		&path{scroll: SCROLL_VERTICALLY, speed: 200, direction: DIRECTION_POSITIVE},
-		&path{scroll: SCROLL_HORIZONTALLY, speed: 200, direction: DIRECTION_NEGATIVE},
-		&path{scroll: SCROLL_HORIZONTALLY, speed: 200, direction: DIRECTION_POSITIVE},
+		// &path{scroll: SCROLL_HORIZONTALLY, speed: 200, direction: DIRECTION_NEGATIVE},
+		// &path{scroll: SCROLL_HORIZONTALLY, speed: 200, direction: DIRECTION_POSITIVE},
 	)
 	base.pathIndex = 0
-	return &GameLevel1{base: base}
-}
-
-func (gl *GameLevel1) LevelId() int32 {
-	return gl.base.LevelId()
-}
-
-func (gl *GameLevel1) LevelSize() *pb.Size {
-	return gl.base.LevelSize()
-}
-
-func (gl *GameLevel1) LevelPosition() *pb.Point {
-	return gl.base.LevelPosition()
+	for row := 0; row < base.tileRowCount; row++ {
+		for col := 0; col < base.tileColCount; col++ {
+			if col%2 == 0 {
+				if row%2 == 0 {
+					base.tiles[row][col] = 1
+				} else {
+					base.tiles[row][col] = 2
+				}
+			} else {
+				if row%2 == 0 {
+					base.tiles[row][col] = 2
+				} else {
+					base.tiles[row][col] = 1
+				}
+			}
+		}
+	}
+	return &GameLevel1{baseGameLevel: base}
 }
 
 func (gl *GameLevel1) UpdateLevelPosition(deltaTime float32) {
-	gl.base.UpdateLevelPosition(deltaTime)
-	if gl.base.pathIndex < len(gl.base.paths) ||
-		gl.base.nextLevelPortal != nil {
+	gl.baseGameLevel.UpdateLevelPosition(deltaTime)
+	if gl.pathIndex < len(gl.paths) ||
+		gl.nextLevelPortal != nil {
 		return
 	}
 	size := &pb.Size{Width: 100, Height: defaultResolutionHeight}
-	gl.base.nextLevelPortal = &pb.NextLevelPortalState{
+	gl.nextLevelPortal = &pb.NextLevelPortalState{
 		Size: size,
 		Position: &pb.Point{
 			X: defaultResolutionWidth - size.Width/2,
@@ -51,21 +56,5 @@ func (gl *GameLevel1) UpdateLevelPosition(deltaTime float32) {
 		Size:     &pb.Size{Width: 200, Height: 200},
 		Position: &pb.Point{X: 400, Y: 400},
 	}
-	gl.base.obstacles = append(gl.base.obstacles, obstacle)
-}
-
-func (gl *GameLevel1) NextLevelPortal() *pb.NextLevelPortalState {
-	return gl.base.NextLevelPortal()
-}
-
-func (gl *GameLevel1) LevelObstacles() []*pb.ObstacleState {
-	return gl.base.LevelObstacles()
-}
-
-func (gl *GameLevel1) LevelVelocity() *pb.Vector {
-	return gl.base.LevelVelocity()
-}
-
-func (gl *GameLevel1) LevelEdges() []*pb.LevelEdgeState {
-	return gl.base.LevelEdges()
+	gl.obstacles = append(gl.obstacles, obstacle)
 }
