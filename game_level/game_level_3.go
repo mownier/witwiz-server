@@ -11,6 +11,8 @@ type GameLevel3 struct {
 func NewGameLevel3() *GameLevel3 {
 	base := newBaseGameLevel(3, &pb.Size{Width: 5120, Height: 1024})
 	base.paths = append(base.paths,
+		&path{scroll: SCROLL_VERTICALLY, speed: 200, direction: DIRECTION_NEGATIVE},
+		&path{scroll: SCROLL_VERTICALLY, speed: 200, direction: DIRECTION_POSITIVE},
 		&path{scroll: SCROLL_HORIZONTALLY, speed: 200, direction: DIRECTION_NEGATIVE},
 		&path{scroll: SCROLL_HORIZONTALLY, speed: 200, direction: DIRECTION_POSITIVE},
 	)
@@ -24,9 +26,11 @@ func NewGameLevel3() *GameLevel3 {
 	)
 	for row := 0; row < base.tileRowCount; row++ {
 		for col := 0; col < base.tileColCount; col++ {
-			base.tiles[row][col] = int32(row*col + col + 1)
+			tileId := row*base.tileColCount + col + 1
+			base.tiles[row][col] = int32(tileId)
 		}
 	}
+
 	return &GameLevel3{baseGameLevel: base}
 }
 
