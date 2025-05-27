@@ -79,7 +79,7 @@ func newPlayerState(playerId int32) *pb.PlayerState {
 }
 
 func gameLevelArrangement() []int32 {
-	return []int32{1, 2}
+	return []int32{1, 2, 3}
 }
 
 func (gw *gameWorld) changeLevel(levelId int32) {
@@ -94,6 +94,10 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 
 	case 2:
 		level = gl.NewGameLevel2()
+		gw.gameLevel = level
+
+	case 3:
+		level = gl.NewGameLevel3()
 		gw.gameLevel = level
 	}
 
