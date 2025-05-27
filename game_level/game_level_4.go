@@ -6,15 +6,13 @@ import (
 	pb "witwiz/proto"
 )
 
-type GameLevel3 struct {
+type GameLevel4 struct {
 	*baseGameLevel
 }
 
-func NewGameLevel3() *GameLevel3 {
-	base := newBaseGameLevel(3, &pb.Size{Width: 5120, Height: 1024})
+func NewGameLevel4() *GameLevel4 {
+	base := newBaseGameLevel(4, &pb.Size{Width: 5120, Height: 1024})
 	base.paths = append(base.paths,
-		&path{scroll: SCROLL_VERTICALLY, speed: 200, direction: DIRECTION_NEGATIVE},
-		&path{scroll: SCROLL_VERTICALLY, speed: 200, direction: DIRECTION_POSITIVE},
 		&path{scroll: SCROLL_HORIZONTALLY, speed: 200, direction: DIRECTION_NEGATIVE},
 		&path{scroll: SCROLL_HORIZONTALLY, speed: 200, direction: DIRECTION_POSITIVE},
 	)
@@ -28,20 +26,20 @@ func NewGameLevel3() *GameLevel3 {
 	)
 
 	var tiles []*pb.Tile
-	err := json.Unmarshal([]byte(level3TilesJson), &tiles)
+	err := json.Unmarshal([]byte(level4TilesJson), &tiles)
 
 	if err != nil {
-		log.Fatalln("level 3 tiles unmarshal error", err)
+		log.Fatalln("level 4 tiles unmarshal error", err)
 	}
 
 	for _, tile := range tiles {
 		base.tiles[tile.Row][tile.Col] = tile.Id
 	}
 
-	return &GameLevel3{baseGameLevel: base}
+	return &GameLevel4{baseGameLevel: base}
 }
 
-func (gl *GameLevel3) UpdateLevelPosition(deltaTime float32) {
+func (gl *GameLevel4) UpdateLevelPosition(deltaTime float32) {
 	gl.baseGameLevel.UpdateLevelPosition(deltaTime)
 	if gl.pathIndex < len(gl.paths) ||
 		gl.nextLevelPortal != nil {
