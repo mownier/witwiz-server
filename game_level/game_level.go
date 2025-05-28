@@ -24,6 +24,7 @@ type GameLevel interface {
 	UpdateLevelPosition(deltaTime float32)
 	NextLevelPortal() *pb.NextLevelPortalState
 	TileChunks() []*pb.TileChunk
+	PlayerSpawnPosition() *pb.Point
 }
 
 type path struct {
@@ -287,4 +288,14 @@ func (gl *baseGameLevel) TileChunks() []*pb.TileChunk {
 	}
 
 	return tileChunks
+}
+
+func (gl *baseGameLevel) PlayerSpawnPosition() *pb.Point {
+	minX := gl.levelPosition.X * -1
+	minY := gl.levelPosition.Y * -1
+	point := &pb.Point{
+		X: minX + 256,
+		Y: minY + defaultResolutionHeight/2,
+	}
+	return point
 }

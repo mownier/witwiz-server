@@ -121,9 +121,17 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 	gw.gameState.NextLevelPortal = nil
 	gw.gameState.TileChunks = level.TileChunks()
 
-	for _, player := range gw.gameState.Players {
-		player.Position.X = player.Size.Width/2 + 500
-		player.Position.Y = player.Size.Height/2 + 400
+	spawnPosition := level.PlayerSpawnPosition()
+	playerHeight := 32
+	playerVSpacing := 128
+	playerCount := len(gw.gameState.Players)
+	totalPlayerHeight := playerHeight*playerCount + playerVSpacing*(playerCount-1)
+	bounds := pb.NewBounds(&pb.Size{Width: 0, Height: float32(totalPlayerHeight)}, spawnPosition)
+	offsetY := bounds.MinY + float32(playerHeight)/2
+
+	for index, player := range gw.gameState.Players {
+		player.Position.X = spawnPosition.X
+		player.Position.Y = offsetY + float32(index*playerHeight) + float32(playerVSpacing*index)
 	}
 
 	gw.gameStateMu.Unlock()
@@ -132,6 +140,15 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 func (gw *gameWorld) addPlayer(player *pb.PlayerState, stream pb.WitWiz_JoinGameServer) {
 	gw.gameStateMu.Lock()
 	gw.gameState.Players = append(gw.gameState.Players, player)
+	if gw.gameState.GameStarted {
+		gw.gameLevelMu.Lock()
+		if gw.gameLevel != nil {
+			spawnPosition := gw.gameLevel.PlayerSpawnPosition()
+			player.Position.X = spawnPosition.X
+			player.Position.Y = spawnPosition.Y
+		}
+		gw.gameLevelMu.Unlock()
+	}
 	gw.gameStateMu.Unlock()
 
 	gw.playerConnectionsMu.Lock()
