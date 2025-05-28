@@ -1,6 +1,7 @@
 package game_level
 
 import (
+	"math"
 	pb "witwiz/proto"
 )
 
@@ -237,9 +238,25 @@ func (gl *baseGameLevel) NextLevelPortal() *pb.NextLevelPortalState {
 }
 
 func (gl *baseGameLevel) TileChunks() []*pb.TileChunk {
+	minX := gl.levelPosition.X * -1
+	maxX := minX + defaultResolutionWidth
+	minY := gl.levelPosition.Y * -1
+	maxY := minY + defaultResolutionHeight
+
+	minTileCol := math.Floor(float64(minX / float32(tileSize)))
+	maxTileCol := math.Ceil(float64(maxX / float32(tileSize)))
+	minTileRow := math.Floor(float64(minY / float32(tileSize)))
+	maxTileRow := math.Ceil(float64(maxY / float32(tileSize)))
+
+	minChunkCol := int(math.Floor(float64(minTileCol / float64(chunkSize))))
+	maxChunkCol := int(math.Floor(float64(maxTileCol / float64(chunkSize))))
+	minChunkRow := int(math.Floor(float64(minTileRow / float64(chunkSize))))
+	maxChunkRow := int(math.Floor(float64(maxTileRow / float64(chunkSize))))
+
 	tileChunks := []*pb.TileChunk{}
-	for chunkRow := 0; chunkRow < gl.chunkRowCount; chunkRow++ {
-		for chunkCol := 0; chunkCol < gl.chunkColCount; chunkCol++ {
+
+	for chunkRow := minChunkRow; chunkRow <= maxChunkRow; chunkRow++ {
+		for chunkCol := minChunkCol; chunkCol <= maxChunkCol; chunkCol++ {
 			tileChunk := &pb.TileChunk{Row: int32(chunkRow), Col: int32(chunkCol), Tiles: []*pb.Tile{}}
 
 			// Calculate the starting tile coordinates for the current chunk
@@ -252,6 +269,10 @@ func (gl *baseGameLevel) TileChunks() []*pb.TileChunk {
 
 			for tileRow := startTileRow; tileRow < endTileRow; tileRow++ {
 				for tileCol := startTileCol; tileCol < endTileCol; tileCol++ {
+					if tileRow < 0 || tileRow >= gl.tileRowCount ||
+						tileCol < 0 || tileCol >= gl.tileColCount {
+						continue
+					}
 					tileId := gl.tiles[tileRow][tileCol]
 					tileChunk.Tiles = append(tileChunk.Tiles, &pb.Tile{Row: int32(tileRow), Col: int32(tileCol), Id: tileId})
 				}
@@ -264,5 +285,6 @@ func (gl *baseGameLevel) TileChunks() []*pb.TileChunk {
 			tileChunks = append(tileChunks, tileChunk)
 		}
 	}
+
 	return tileChunks
 }

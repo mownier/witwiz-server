@@ -76,19 +76,9 @@ func (s *Server) joinGameInternal(stream pb.WitWiz_JoinGameServer) error {
 		}
 	}()
 
-	var tileChunks []*pb.TileChunk
-	s.gameWorld.gameLevelMu.Lock()
-	if s.gameWorld.gameLevel != nil {
-		tileChunks = s.gameWorld.gameLevel.TileChunks()
-	}
-	s.gameWorld.gameLevelMu.Unlock()
-
 	initialData := newGameStateUpdate()
 	initialData.IsInitial = true
 	initialData.Players = append(initialData.Players, newPlayerState(playerId))
-	if len(tileChunks) > 0 {
-		initialData.TileChunks = tileChunks
-	}
 	if err := stream.Send(initialData); err != nil {
 		msg := "failed to send initial data"
 		log.Printf("%s: %v\n", msg, err)

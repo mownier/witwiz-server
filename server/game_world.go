@@ -127,18 +127,6 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 	}
 
 	gw.gameStateMu.Unlock()
-
-	gw.playerConnectionsMu.Lock()
-	for _, conn := range gw.playerConnections {
-		initialData := &pb.GameStateUpdate{
-			IsInitial:  true,
-			TileChunks: level.TileChunks(),
-		}
-		if err := conn.stream.Send(initialData); err != nil {
-			log.Printf("failed to send initial data for tile chunks to player %d: %v\n", conn.playerId, err)
-		}
-	}
-	gw.playerConnectionsMu.Unlock()
 }
 
 func (gw *gameWorld) addPlayer(player *pb.PlayerState, stream pb.WitWiz_JoinGameServer) {
