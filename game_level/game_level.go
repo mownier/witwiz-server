@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	defaultResolutionWidth  float32 = 1080
+	defaultResolutionWidth  float32 = 1280
 	defaultResolutionHeight float32 = 720
 	defaultLevelEdgeAlongX  float32 = 8
 	defaultLevelEdgeAlongY  float32 = 8
