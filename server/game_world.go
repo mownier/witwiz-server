@@ -119,7 +119,6 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 	gw.gameState.Obstacles = level.LevelObstacles()
 	gw.gameState.LevelEdges = level.LevelEdges()
 	gw.gameState.NextLevelPortal = nil
-	gw.gameState.TileChunks = level.TileChunks()
 
 	for _, player := range gw.gameState.Players {
 		player.Position.X = 0
@@ -239,6 +238,23 @@ func (gw *gameWorld) processInput(input *pb.PlayerInput) error {
 	case pb.PlayerInput_MOVE_DOWN_STOP:
 		player.Acceleration.Y = 0.0
 		player.TargetVelocity.Y = 0.0
+
+	case pb.PlayerInput_TILE_CHUNKS_REQUEST:
+		gw.gameLevelMu.Lock()
+		tileChunks := gw.gameLevel.GetTileChunksToLoad(input.TileChunksToLoad)
+		gw.gameLevelMu.Unlock()
+
+		gameStateToSend := proto.Clone(gw.gameState).(*pb.GameStateUpdate)
+		gameStateToSend.TileChunks = tileChunks
+
+		for _, conn := range gw.playerConnections {
+			if conn.playerId == input.PlayerId {
+				if err := conn.stream.Send(gameStateToSend); err != nil {
+					log.Printf("failed to send requested tile chunks to player %d: %v\n", conn.playerId, err)
+				}
+				break
+			}
+		}
 	}
 
 	return nil
@@ -586,10 +602,8 @@ func (gw *gameWorld) runGameLoop() {
 			gw.gameLevelMu.Lock()
 			gw.gameLevel.UpdateLevelPosition(deltaTime)
 			updatedLevelPosition := gw.gameLevel.LevelPosition()
-			updatedTileChunks := gw.gameLevel.TileChunks()
 			gw.gameLevelMu.Unlock()
 			gw.gameState.LevelPosition = updatedLevelPosition
-			gw.gameState.TileChunks = updatedTileChunks
 		}
 
 		if gameOver {
