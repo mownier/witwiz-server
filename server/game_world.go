@@ -121,17 +121,11 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 	gw.gameState.NextLevelPortal = nil
 	gw.gameState.TileChunks = level.TileChunks()
 
-	spawnPosition := level.PlayerSpawnPosition()
-	playerHeight := 32
-	playerVSpacing := 128
-	playerCount := len(gw.gameState.Players)
-	totalPlayerHeight := playerHeight*playerCount + playerVSpacing*(playerCount-1)
-	bounds := pb.NewBounds(&pb.Size{Width: 0, Height: float32(totalPlayerHeight)}, spawnPosition)
-	offsetY := bounds.MinY + float32(playerHeight)/2
-
-	for index, player := range gw.gameState.Players {
-		player.Position.X = spawnPosition.X
-		player.Position.Y = offsetY + float32(index*playerHeight) + float32(playerVSpacing*index)
+	for _, player := range gw.gameState.Players {
+		player.Position.X = 0
+		player.Velocity.X = 0
+		player.Position.Y = 0
+		player.Velocity.Y = 0
 	}
 
 	gw.gameStateMu.Unlock()
@@ -140,15 +134,6 @@ func (gw *gameWorld) changeLevel(levelId int32) {
 func (gw *gameWorld) addPlayer(player *pb.PlayerState, stream pb.WitWiz_JoinGameServer) {
 	gw.gameStateMu.Lock()
 	gw.gameState.Players = append(gw.gameState.Players, player)
-	if gw.gameState.GameStarted {
-		gw.gameLevelMu.Lock()
-		if gw.gameLevel != nil {
-			spawnPosition := gw.gameLevel.PlayerSpawnPosition()
-			player.Position.X = spawnPosition.X
-			player.Position.Y = spawnPosition.Y
-		}
-		gw.gameLevelMu.Unlock()
-	}
 	gw.gameStateMu.Unlock()
 
 	gw.playerConnectionsMu.Lock()
@@ -325,6 +310,22 @@ func (gw *gameWorld) runGameLoop() {
 		gw.gameState.Obstacles = gw.gameLevel.LevelObstacles()
 		gw.gameLevelMu.Unlock()
 
+		levelEdgesBounds := pb.Bounds{}
+		for _, le := range levelEdges {
+			switch le.Id {
+			case gl.LEVEL_EDGE_LEFT:
+				levelEdgesBounds.MinX = le.Position.X + le.Size.Width/2
+
+			case gl.LEVEL_EDGE_RIGHT:
+				levelEdgesBounds.MaxX = le.Position.X - le.Size.Width/2
+
+			case gl.LEVEL_EDGE_BOTTOM:
+				levelEdgesBounds.MinY = le.Position.Y + le.Size.Height/2
+
+			case gl.LEVEL_EDGE_TOP:
+				levelEdgesBounds.MaxY = le.Position.Y - le.Size.Height/2
+			}
+		}
 		gameOver := false
 		nextLevelId := int32(-1)
 		shouldUpdateLevelPosition := false
@@ -395,6 +396,19 @@ func (gw *gameWorld) runGameLoop() {
 			// Update position
 			potentialLevelPosX := player.Position.X + player.Velocity.X*deltaTime
 			potentialLevelPosY := player.Position.Y + player.Velocity.Y*deltaTime
+
+			if potentialLevelPosX == 0 && potentialLevelPosY == 0 {
+				player.Velocity.X = levelVelocity.X * -1
+				player.Velocity.Y = levelVelocity.Y * -1
+				if player.Velocity.X >= 0 {
+					player.Position.X = levelEdgesBounds.MinX + player.Size.Width/2
+				} else {
+					player.Position.X = levelEdgesBounds.MaxX - player.Size.Width/2
+				}
+				player.Position.Y = levelEdgesBounds.MinY + (levelEdgesBounds.MaxY-levelEdgesBounds.MinY)/2
+				potentialLevelPosX = player.Position.X + player.Velocity.X*deltaTime
+				potentialLevelPosY = player.Position.Y + player.Velocity.Y*deltaTime
+			}
 
 			// 1. Resolve X-axis movement
 			playerBoundsAtPotentialX := pb.NewBounds(player.Size, &pb.Point{X: potentialLevelPosX, Y: player.Position.Y})
