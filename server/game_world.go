@@ -7,6 +7,7 @@ import (
 	gl "witwiz/game_level"
 	pb "witwiz/proto"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -17,6 +18,8 @@ const (
 	playerDeceleration float32 = 1600
 	playerMaxSpeed     float32 = 1200
 	tickRate                   = time.Millisecond * 5
+
+	friendlyBulletSpeed float32 = 500
 )
 
 type gameWorld struct {
@@ -58,6 +61,7 @@ func newGameStateUpdate() *pb.GameStateUpdate {
 
 		NextLevelPortal: nil,
 		Obstacles:       []*pb.ObstacleState{},
+		FriendlyBullets: []*pb.FriendlyBulletState{},
 	}
 }
 
@@ -255,6 +259,31 @@ func (gw *gameWorld) processInput(input *pb.PlayerInput) error {
 				break
 			}
 		}
+
+	case pb.PlayerInput_SHOOT:
+		var player *pb.PlayerState
+		for _, p := range gw.gameState.Players {
+			if p.Id == input.PlayerId {
+				player = p
+				break
+			}
+		}
+		if player == nil {
+			break
+		}
+		bullet := &pb.FriendlyBulletState{
+			Id:       uuid.New().String(),
+			Kind:     1,
+			OwnerId:  input.PlayerId,
+			Size:     &pb.Size{Width: 16, Height: 16},
+			Position: &pb.Point{X: 0, Y: 0},
+			Velocity: &pb.Vector{X: 0, Y: 0},
+			Active:   true,
+		}
+		bullet.Position.X = player.Position.X + player.Size.Width/2 + bullet.Size.Width/2 + 8
+		bullet.Position.Y = player.Position.Y
+		bullet.Velocity.X = friendlyBulletSpeed
+		gw.gameState.FriendlyBullets = append(gw.gameState.FriendlyBullets, bullet)
 	}
 
 	return nil
@@ -594,6 +623,46 @@ func (gw *gameWorld) runGameLoop() {
 						gw.gameLevels = DeleteElementOrdered(gw.gameLevels, 0)
 						gw.gameLevelMu.Unlock()
 					}
+				}
+			}
+		}
+
+		friendlyBulletsToHandle := []*pb.FriendlyBulletState{}
+
+		for _, bullet := range gw.gameState.FriendlyBullets {
+			if bullet.Active {
+				friendlyBulletsToHandle = append(friendlyBulletsToHandle, bullet)
+			}
+
+			bullet.Position.X += bullet.Velocity.X * deltaTime
+			bullet.Position.Y += bullet.Velocity.Y * deltaTime
+
+			bulletBounds := pb.NewBounds(bullet.Size, bullet.Position)
+
+			for _, levelEdge := range levelEdges {
+				levelEdgeBounds := pb.NewBounds(levelEdge.Size, levelEdge.Position)
+				if checkCollision(bulletBounds, levelEdgeBounds) {
+					bullet.Active = false
+					break
+				}
+			}
+		}
+
+		if len(friendlyBulletsToHandle) != len(gw.gameState.FriendlyBullets) {
+			gw.gameState.FriendlyBullets = friendlyBulletsToHandle
+		}
+
+		for _, bullet := range gw.gameState.FriendlyBullets {
+			bullet.Position.X += bullet.Velocity.X * deltaTime
+			bullet.Position.Y += bullet.Velocity.Y * deltaTime
+
+			bulletBounds := pb.NewBounds(bullet.Size, bullet.Position)
+
+			for _, levelEdge := range levelEdges {
+				levelEdgeBounds := pb.NewBounds(levelEdge.Size, levelEdge.Position)
+				if checkCollision(bulletBounds, levelEdgeBounds) {
+					bullet.Active = false
+					break
 				}
 			}
 		}
